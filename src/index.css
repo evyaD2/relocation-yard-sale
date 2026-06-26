@@ -1,0 +1,42 @@
+/**
+ * @file index.css
+ * @author Dor Gidony
+ * @copyright © 2026 Dor Gidony. All rights reserved.
+ */
+
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@theme {
+  --color-oatmeal: #F4F4F0;
+  --color-surface: #FFFFFF;
+  --color-jet: #000000;
+  --color-stone: #555555;
+  --color-border-subtle: #DDDDDD;
+  --color-whatsapp: #25D366;
+  
+  --font-heading: "Playfair Display", serif;
+  --font-sans: "Manrope", sans-serif;
+  --font-hebrew-heading: "Frank Ruhl Libre", serif;
+  --font-hebrew-sans: "Heebo", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-oatmeal text-jet font-sans antialiased selection:bg-jet selection:text-white;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading text-jet tracking-tight;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}

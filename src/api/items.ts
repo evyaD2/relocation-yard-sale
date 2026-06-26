@@ -1,0 +1,478 @@
+/**
+ * @file items.ts
+ * @author Dor Gidony
+ * @copyright © 2026 Dor Gidony. All rights reserved.
+ */
+
+import { supabase } from '../lib/supabase';
+import type { YardSaleItem, ItemStatus } from '../types';
+
+export async function fetchItems(): Promise<YardSaleItem[]> {
+  const { data, error } = await supabase
+    .from('yard_sale_items')
+    .select('*')
+    .order('display_order', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching items:', error);
+    return [];
+  }
+  
+  return data as YardSaleItem[];
+}
+
+export async function updateItemStatus(id: string, status: ItemStatus): Promise<boolean> {
+  const { error } = await supabase
+    .from('yard_sale_items')
+    .update({ status })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating item status:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function updateItemContact(id: string, contact: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('yard_sale_items')
+    .update({ contact })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating item contact:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function createItem(item: Omit<YardSaleItem, 'id'>): Promise<YardSaleItem | null> {
+  const { data, error } = await supabase
+    .from('yard_sale_items')
+    .insert([item])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating item:', error);
+    return null;
+  }
+  return data as YardSaleItem;
+}
+
+export async function updateItem(id: string, updates: Partial<YardSaleItem>): Promise<boolean> {
+  const { error } = await supabase
+    .from('yard_sale_items')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating item:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteItem(item: YardSaleItem): Promise<boolean> {
+  const { id, images } = item;
+
+  // 1. Manually clean up item shares (since it currently lacks a database foreign key cascade)
+  const { error: sharesError } = await supabase
+    .from('item_shares')
+    .delete()
+    .eq('item_id', id);
+
+  if (sharesError) {
+    console.error('Error deleting item shares:', sharesError);
+  }
+
+  // 2. Manually clean up item views (in case the foreign key cascade is missing or misconfigured in the DB)
+  const { error: viewsError } = await supabase
+    .from('item_views')
+    .delete()
+    .eq('item_id', id);
+
+  if (viewsError) {
+    console.error('Error deleting item views:', viewsError);
+  }
+
+  // 3. Manually clean up price history
+  const { error: historyError } = await supabase
+    .from('price_history')
+    .delete()
+    .eq('item_id', id);
+
+  if (historyError) {
+    console.error('Error deleting price history:', historyError);
+  }
+
+  // 4. Delete the item from yard_sale_items
+  const { error: dbError } = await supabase
+    .from('yard_sale_items')
+    .delete()
+    .eq('id', id);
+
+  if (dbError) {
+    console.error('Error deleting item:', dbError);
+    return false;
+  }
+
+  // 3. Delete files from Supabase Storage 'images' bucket
+  if (images && images.length > 0) {
+    const filePaths = images
+      .map(url => {
+        const bucketSegment = '/storage/v1/object/public/images/';
+        const idx = url.indexOf(bucketSegment);
+        return idx !== -1 ? url.substring(idx + bucketSegment.length) : null;
+      })
+      .filter((path): path is string => !!path);
+
+    if (filePaths.length > 0) {
+      const { error: storageError } = await supabase.storage
+        .from('images')
+        .remove(filePaths);
+
+      if (storageError) {
+        console.error('Error deleting images from storage:', storageError);
+      }
+    }
+  }
+
+  return true;
+}
+
+export async function reorderItems(orderedItems: any[]): Promise<boolean> {
+  // Strip out any nested joined tables (like item_categories) so PostgREST doesn't reject the payload
+  const cleanedItems = orderedItems.map((item) => {
+    const { item_categories, ...rest } = item;
+    return rest;
+  });
+
+  const { error } = await supabase
+    .from('yard_sale_items')
+    .upsert(cleanedItems);
+
+  if (error) {
+    console.error('Error reordering items:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function uploadImage(file: File): Promise<string | null> {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+  const filePath = `${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('images')
+    .upload(filePath, file);
+
+  if (uploadError) {
+    console.error('Error uploading image:', uploadError);
+    return null;
+  }
+
+  const { data } = supabase.storage
+    .from('images')
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+}
+
+/**
+ * Detects the viewer's platform based on screen width.
+ */
+function detectPlatform(): 'mobile' | 'tablet' | 'desktop' {
+  const w = window.innerWidth;
+  if (w < 768) return 'mobile';
+  if (w < 1024) return 'tablet';
+  return 'desktop';
+}
+
+/**
+ * Records an item view in the item_views table.
+ * Must only be called when no user session is active (i.e. not the admin).
+ */
+export async function recordItemView(itemId: string, itemTitle: string): Promise<void> {
+  const platform = detectPlatform();
+  const referrer = document.referrer
+    ? new URL(document.referrer).hostname
+    : 'direct';
+
+  const { error } = await supabase.from('item_views').insert([{
+    item_id: itemId,
+    item_title: itemTitle,
+    platform,
+    referrer,
+  }]);
+
+  if (error) {
+    // Silently fail — analytics should never break the user experience
+    console.warn('Analytics: failed to record view', error.message);
+  }
+}
+
+// ── Analytics read functions (admin only) ──────────────────────────────────
+
+export interface ItemViewStat {
+  item_id: string;
+  item_title: string;
+  total_views: number;
+  mobile_views: number;
+  tablet_views: number;
+  desktop_views: number;
+}
+
+/** Returns per-item view totals + platform breakdown for the last N days. */
+export async function fetchItemViewStats(days = 12): Promise<ItemViewStat[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const { data, error } = await supabase
+    .from('item_views')
+    .select('item_id, item_title, platform')
+    .gte('viewed_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch view stats', error);
+    return [];
+  }
+
+  // Aggregate client-side
+  const map = new Map<string, ItemViewStat>();
+  for (const row of data as { item_id: string; item_title: string; platform: string }[]) {
+    if (!map.has(row.item_id)) {
+      map.set(row.item_id, {
+        item_id: row.item_id,
+        item_title: row.item_title,
+        total_views: 0,
+        mobile_views: 0,
+        tablet_views: 0,
+        desktop_views: 0,
+      });
+    }
+    const stat = map.get(row.item_id)!;
+    stat.total_views += 1;
+    if (row.platform === 'mobile') stat.mobile_views += 1;
+    else if (row.platform === 'tablet') stat.tablet_views += 1;
+    else stat.desktop_views += 1;
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.total_views - a.total_views);
+}
+
+export interface DailyViewStat {
+  date: string; // YYYY-MM-DD in the browser's local timezone
+  views: number;
+}
+
+/**
+ * Returns YYYY-MM-DD in the **browser's local timezone**.
+ * Simply slicing .toISOString() gives the UTC date, which is wrong
+ * for users whose midnight falls on a different UTC day (e.g. UTC+3 after 21:00).
+ */
+function toLocalDateStr(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/** Returns daily view totals for the past N days (dates in local timezone). */
+export async function fetchDailyViewStats(days = 12): Promise<DailyViewStat[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const { data, error } = await supabase
+    .from('item_views')
+    .select('viewed_at')
+    .gte('viewed_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch daily stats', error);
+    return [];
+  }
+
+  const map = new Map<string, number>();
+  for (const row of data as { viewed_at: string }[]) {
+    const date = toLocalDateStr(new Date(row.viewed_at)); // local date, not UTC
+    map.set(date, (map.get(date) ?? 0) + 1);
+  }
+
+  // Fill in missing dates with 0 (use local dates for the range keys)
+  const result: DailyViewStat[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = toLocalDateStr(d); // local date
+    result.push({ date: dateStr, views: map.get(dateStr) ?? 0 });
+  }
+
+  return result;
+}
+
+// ── Storefront Visit Tracking ──────────────────────────────────────────────
+
+/** Records a storefront visit. Must only be called when no session is active. */
+export async function recordStorefrontVisit(): Promise<void> {
+  const platform = detectPlatform();
+  const referrer = document.referrer
+    ? new URL(document.referrer).hostname
+    : 'direct';
+
+  const { error } = await supabase.from('storefront_visits').insert([{ platform, referrer }]);
+  if (error) {
+    console.warn('Analytics: failed to record storefront visit', error.message);
+  }
+}
+
+export interface StorefrontStats {
+  total: number;
+  last12Days: number;
+}
+
+/** Returns total storefront visits (all-time) and for the last 12 days. */
+export async function fetchStorefrontStats(): Promise<StorefrontStats> {
+  const since = new Date();
+  since.setDate(since.getDate() - 12);
+
+  const [totalRes, last12Res] = await Promise.all([
+    supabase.from('storefront_visits').select('id', { count: 'exact', head: true }),
+    supabase
+      .from('storefront_visits')
+      .select('id', { count: 'exact', head: true })
+      .gte('visited_at', since.toISOString()),
+  ]);
+
+  return {
+    total: totalRes.count ?? 0,
+    last12Days: last12Res.count ?? 0,
+  };
+}
+
+// ── Per-item daily chart data ──────────────────────────────────────────────
+
+export interface ItemDailyStat {
+  item_id: string;
+  item_title: string;
+  date: string; // YYYY-MM-DD
+  views: number;
+}
+
+/**
+ * Returns per-item view counts for each day in the last N days.
+ * Dates are in the browser's local timezone.
+ * Only includes items with at least 1 view in that period.
+ */
+export async function fetchItemDailyStats(days = 12): Promise<ItemDailyStat[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days + 1);
+  since.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from('item_views')
+    .select('item_id, item_title, viewed_at')
+    .gte('viewed_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch item daily stats', error);
+    return [];
+  }
+
+  // Build date list using local dates
+  const dates: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(toLocalDateStr(d)); // local date
+  }
+
+  // Group by item then local date
+  const byItem = new Map<string, { title: string; byDate: Map<string, number> }>();
+  for (const row of data as { item_id: string; item_title: string; viewed_at: string }[]) {
+    const date = toLocalDateStr(new Date(row.viewed_at)); // local date, not UTC
+    if (!byItem.has(row.item_id)) {
+      byItem.set(row.item_id, { title: row.item_title, byDate: new Map() });
+    }
+    const entry = byItem.get(row.item_id)!;
+    entry.byDate.set(date, (entry.byDate.get(date) ?? 0) + 1);
+  }
+
+  // Flatten to ItemDailyStat[], filling 0s for missing dates
+  const result: ItemDailyStat[] = [];
+  for (const [item_id, { title, byDate }] of byItem) {
+    for (const date of dates) {
+      result.push({ item_id, item_title: title, date, views: byDate.get(date) ?? 0 });
+    }
+  }
+  return result;
+}
+
+// ── Share Tracking ─────────────────────────────────────────────────────────
+
+export type ShareChannel = 'whatsapp' | 'facebook' | 'native' | 'clipboard';
+
+/** Records an item share. Must only be called when no admin session is active. */
+export async function recordItemShare(
+  itemId: string,
+  itemTitle: string,
+  channel: ShareChannel = 'whatsapp',
+): Promise<void> {
+  const { error } = await supabase.from('item_shares').insert([{
+    item_id: itemId,
+    item_title: itemTitle,
+    channel,
+    platform: detectPlatform(),
+  }]);
+  if (error) {
+    console.warn('Analytics: failed to record item share', error.message);
+  }
+}
+
+export interface ItemShareStat {
+  item_id: string;
+  item_title: string;
+  total_shares: number;
+}
+
+/** Returns per-item share totals for the last N days. */
+export async function fetchItemShareStats(days = 12): Promise<ItemShareStat[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const { data, error } = await supabase
+    .from('item_shares')
+    .select('item_id, item_title')
+    .gte('shared_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch share stats', error);
+    return [];
+  }
+
+  const map = new Map<string, ItemShareStat>();
+  for (const row of data as { item_id: string; item_title: string }[]) {
+    if (!map.has(row.item_id)) {
+      map.set(row.item_id, { item_id: row.item_id, item_title: row.item_title, total_shares: 0 });
+    }
+    map.get(row.item_id)!.total_shares += 1;
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.total_shares - a.total_shares);
+}
+
+/** Returns total share counts: all-time and last 12 days. */
+export async function fetchTotalShares(): Promise<{ total: number; last12Days: number }> {
+  const since = new Date();
+  since.setDate(since.getDate() - 12);
+
+  const [totalRes, last12Res] = await Promise.all([
+    supabase.from('item_shares').select('id', { count: 'exact', head: true }),
+    supabase.from('item_shares').select('id', { count: 'exact', head: true }).gte('shared_at', since.toISOString()),
+  ]);
+
+  return { total: totalRes.count ?? 0, last12Days: last12Res.count ?? 0 };
+}

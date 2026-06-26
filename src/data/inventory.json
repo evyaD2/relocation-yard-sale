@@ -1,0 +1,132 @@
+[
+  {
+    "id": "itm-001",
+    "title": "ספת עור של Natuzzi",
+    "description": "קנינו את מערכת הישיבה הזו של נאטוצי לפני קצת יותר משנתיים והיא שימשה אותנו נאמנה. היא סופר נוחה לרביצה של ערבי סרט וקשה לנו מאוד להיפרד ממנה, אבל לצערנו היא מסיבית מדי ולא תצליח להיכנס למכולה לווינה. שמורה היטב בלי שריטות או כתמים.",
+    "price": 4500,
+    "condition": "מצוין",
+    "category": "Furniture",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1540574163026-643ea20d25b5?auto=format&fit=crop&w=800&q=80"
+    ],
+    "dimensions": "אורך 2.20מ' / עומק 0.90מ'"
+  },
+  {
+    "id": "itm-002",
+    "title": "שולחן אוכל מעץ אלון מסיבי",
+    "description": "שולחן עץ אלון מלא ומסיבי שעשה לנו המון ארוחות שישי ושבת משמחות. הוא מתאים ל-6 עד 8 סועדים בקלות. יש לו קצת שריטות שימוש פה ושם למעלה, אבל העץ כל כך איכותי ששיוף קל וקצת שמן יחזירו אותו למצב חנות.",
+    "price": 1200,
+    "condition": "מצב טוב",
+    "category": "Furniture",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1604147706283-d7119b5b822c?auto=format&fit=crop&w=800&q=80"
+    ],
+    "dimensions": "1.80מ' x 0.90מ'"
+  },
+  {
+    "id": "itm-003",
+    "title": "מסך מחשב Dell 4K 27\"",
+    "description": "המסך הזה הציל אותי בתקופת העבודה מהבית. צבעים מושלמים והוא פשוט מדהים לתכנות ועיצוב. מגיע יחד עם המעמד המקורי שלו (שאפשר לכוון איתו זווית וגובה). מוכר אותו רק כי אני אקבל ציוד חדש מהחברה שם.",
+    "price": 850,
+    "condition": "כמו חדש",
+    "category": "Tech",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80"
+    ],
+    "fbMarketplaceLink": "https://facebook.com/marketplace/"
+  },
+  {
+    "id": "itm-004",
+    "title": "מכונת אספרסו Nespresso",
+    "description": "עושה קפה מעולה ובועט שמציל את הבקרים! דאגנו לה מאוד ועשינו טיפול ניקוי אבנית כל חצי שנה כמו שעון. בחששות רבים אנחנו משדרגים למכונה מקצועית שטוחנת בעצמה לכבוד המעבר, אז היא מחפשת בית חם.",
+    "price": 150,
+    "condition": "כמו חדש",
+    "category": "Kitchen",
+    "status": "sold",
+    "images": [
+      "/nespresso.png"
+    ]
+  },
+  {
+    "id": "itm-005",
+    "title": "אוזניות Bose QuietComfort 35 II",
+    "description": "אוזניות ביטול הרעשים האהובות עלי שטסו איתי לכל מקום. הסאונד מושלם והסוללה מחזיקה נצח. קניתי כריות אוזניים (Earpads) חדשות לחלוטין רק לפני חודש. מוכרים בגלל שדרוג לאוזניות בתצורת In-ear לטיסות.",
+    "price": 400,
+    "condition": "מצב טוב",
+    "category": "Tech",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=800&q=80"
+    ]
+  },
+  {
+    "id": "itm-006",
+    "title": "כוורת KALLAX של איקאה",
+    "description": "כוורת קלאסית של איקאה (4x4). עמדה בחדר העבודה ושימשה בעיקר לאחסון ציוד משרדי וספרים. במצב מעולה עקב שימוש עדין, ללא ברגים רופפים או פינות שבורות. נמכר יחד עם 4 קופסאות אחסון תואמות.",
+    "price": 200,
+    "condition": "כמו חדש",
+    "category": "Furniture",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1595515106969-1ce29566ff1c?auto=format&fit=crop&w=800&q=80"
+    ],
+    "dimensions": "147cm x 147cm x 39cm"
+  },
+  {
+    "id": "itm-007",
+    "title": "מצלמת Sony a6000 Mirrorless",
+    "description": "מצלמה מצוינת שהתחילה אצלי את תחביב הצילום. קלה במיוחד ויש לה פוקוס אוטומטי מהיר בטירוף, מעולה לוידאו. מגיעה יחד עם עדשת הקיט הרשמית, שתי סוללות ומטען נפרד. מוכרים בצער לפני המעבר.",
+    "price": 1100,
+    "condition": "כמו חדש",
+    "category": "Tech",
+    "status": "pending",
+    "images": [
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80"
+    ]
+  },
+  {
+    "id": "itm-008",
+    "title": "סיר יצוק של Le Creuset",
+    "description": "סיר קלאסי של לה קרוזה. עשה לנו אינספור תבשילי קדירה מדהימים בחורפים. הוא פשוט כבד מדי בשביל שנעמיס אותו במזוודות לווינה לצערי הגדול. מציאה של ממש למי שמבין בבישול ארוך.",
+    "price": 350,
+    "condition": "מצב טוב",
+    "category": "Kitchen",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?auto=format&fit=crop&w=800&q=80"
+    ],
+    "dimensions": "26cm / 5.3 Liters"
+  },
+  {
+    "id": "itm-009",
+    "title": "מיקסר KitchenAid Artisan",
+    "description": "המיקסר האלמותי בצבע אדום קלאסי (Empire Red). עובד מצוין והכין כמויות מסחריות של עוגיות לאורך השנים. מוכרים רק כי המתח באוסטריה שונה מהארץ ונצטרך לקנות אחד חדש שם בלית ברירה.",
+    "price": 950,
+    "condition": "מצוין",
+    "category": "Kitchen",
+    "status": "sold",
+    "images": [
+      "https://images.unsplash.com/photo-1585257321689-53fe5efaa9a2?auto=format&fit=crop&w=800&q=80"
+    ]
+  },
+  {
+    "id": "itm-010",
+    "title": "כורסת קטיפה של West Elm",
+    "description": "כורסה סופר אלגנטית לסלון עם ריפוד ירוק קטיפה. נקנתה רק לפני שנה ורוב הזמן עמדה ליופי ליד הספרייה. היא תופסת לא מעט נפח כך שהיא לא עוברת איתנו. פריט עיצוב שמשדרג כל חדר ומרגיש סופר איכותי.",
+    "price": 850,
+    "condition": "כמו חדש",
+    "category": "Furniture",
+    "status": "available",
+    "images": [
+      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&w=800&q=80"
+    ],
+    "dimensions": "רוחב 0.75מ' / עומק 0.85מ'"
+  }
+]
