@@ -33,6 +33,10 @@ async function buildDriveFileMap(): Promise<Map<string, string>> {
   return driveFileCache;
 }
 
+export function invalidateDriveCache() {
+  driveFileCache = null;
+}
+
 function driveUrl(fileId: string): string {
   return `https://drive.google.com/thumbnail?id=${fileId}&sz=s2000`;
 }
@@ -87,9 +91,10 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
     .map(s => s.trim())
     .filter(Boolean);
 
-  // contact: sheet uses "me" / "wife" — map to known ItemContact values
+  // contact: sheet may use "me"/"wife" (original) or "evya"/"hadas" (admin writes)
   const rawContact = (get('contact') as string | null) ?? '';
-  const contact: ItemContact = rawContact === 'wife' ? 'hadas' : 'evya';
+  const contact: ItemContact =
+    rawContact === 'wife' || rawContact === 'hadas' ? 'hadas' : 'evya';
 
   // delivery_time: map departure/july-related values to 'departure', everything else to 'flexible'
   const rawDelivery = ((get('delivery_time') as string | null) ?? '').toLowerCase();
@@ -110,6 +115,10 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
   const originalPrice = rawOriginalPrice != null && rawOriginalPrice !== '' ? Number(rawOriginalPrice) : undefined;
   const brand = (get('brand') as string | null) || undefined;
   const model = (get('model') as string | null) || undefined;
+  const rawHidden = (get('hidden') as string | null) ?? '';
+  const hidden = rawHidden === 'true' || rawHidden === '1';
+
+  if (hidden) return null; // filtered out from public storefront
 
   return {
     id: String(rawId),
@@ -128,6 +137,7 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
     originalPrice,
     brand,
     model,
+    hidden: false, // already filtered above; admin panel sets this separately
   };
 }
 

@@ -24,4 +24,5 @@ export interface YardSaleItem {
   originalPrice?: number;     // Original retail price (shown as strikethrough to highlight discount)
   brand?: string;             // Manufacturer or store name (e.g. "IKEA", "Samsung")
   model?: string;             // Model name or number (e.g. "KALLAX", "Galaxy S21")
+  hidden?: boolean;           // Admin-only: hides item from public storefront
 }
