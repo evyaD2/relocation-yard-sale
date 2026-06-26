@@ -9,6 +9,34 @@ export function driveFilename(itemId: string | number, index: number, file: File
   return `${itemId}${suffix}.${ext}`;
 }
 
+export interface DriveFile {
+  id: string;
+  name: string;
+}
+
+export function driveThumbUrl(fileId: string, size = 400) {
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=s${size}`;
+}
+
+/** Lists all image files in the Drive folder using the admin OAuth token. */
+export async function listDriveFiles(token: string): Promise<DriveFile[]> {
+  const q = encodeURIComponent(`'${GDRIVE_FOLDER_ID}' in parents and trashed=false`);
+  const fields = encodeURIComponent('nextPageToken,files(id,name)');
+  const all: DriveFile[] = [];
+  let pageToken = '';
+
+  do {
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&orderBy=name&pageSize=200${pageToken ? `&pageToken=${pageToken}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Drive list failed: ${res.status}`);
+    const data = await res.json() as { files: DriveFile[]; nextPageToken?: string };
+    all.push(...(data.files ?? []));
+    pageToken = data.nextPageToken ?? '';
+  } while (pageToken);
+
+  return all;
+}
+
 /** Uploads a file to the shared Drive folder and makes it publicly readable. */
 export async function uploadToDrive(
   token: string,

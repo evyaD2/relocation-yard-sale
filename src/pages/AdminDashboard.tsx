@@ -7,7 +7,8 @@ import type { ItemCategory } from '../api/categories';
 import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
-import { uploadToDrive, driveFilename } from '../api/drive-admin';
+import { uploadToDrive, driveFilename, listDriveFiles, driveThumbUrl } from '../api/drive-admin';
+import type { DriveFile } from '../api/drive-admin';
 import {
   readAllRows, parseHeaders, findRow,
   getNextItemId, appendRow, updateRow,
@@ -181,6 +182,10 @@ export default function AdminDashboard() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sheetsRows, setSheetsRows] = useState<string[][] | null>(null);
   const [newCatName, setNewCatName] = useState('');
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
+  const [drivePickerLoading, setDrivePickerLoading] = useState(false);
+  const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -291,6 +296,41 @@ export default function AdminDashboard() {
   const addImages = (files: FileList | null) => {
     if (!files) return;
     setImageFiles(prev => [...prev, ...Array.from(files)]);
+  };
+
+  const openDrivePicker = async () => {
+    if (!googleToken) { alert('Connect Google first.'); return; }
+    setShowDrivePicker(true);
+    setSelectedDriveIds(new Set());
+    if (driveFiles.length === 0) {
+      setDrivePickerLoading(true);
+      try {
+        const files = await listDriveFiles(googleToken);
+        setDriveFiles(files);
+      } catch (err) {
+        console.error('Drive list failed:', err);
+        alert('Could not load Drive files. Check console.');
+      } finally {
+        setDrivePickerLoading(false);
+      }
+    }
+  };
+
+  const confirmDriveSelection = () => {
+    const urls = driveFiles
+      .filter(f => selectedDriveIds.has(f.id))
+      .map(f => driveThumbUrl(f.id, 2000));
+    setFormData(prev => ({ ...prev, images: [...(prev.images ?? []), ...urls] }));
+    setShowDrivePicker(false);
+    setSelectedDriveIds(new Set());
+  };
+
+  const toggleDriveFile = (id: string) => {
+    setSelectedDriveIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   };
 
   // ── Item CRUD ───────────────────────────────────────────────────────────────
@@ -597,6 +637,7 @@ export default function AdminDashboard() {
   // ── Dashboard ─────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="min-h-screen bg-oatmeal py-10 px-4 sm:px-10">
       <div className="max-w-5xl mx-auto">
 
@@ -689,6 +730,13 @@ export default function AdminDashboard() {
                       🖼 Gallery
                       <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => addImages(e.target.files)} />
                     </label>
+                    <button
+                      type="button"
+                      onClick={openDrivePicker}
+                      className="flex-1 min-w-[120px] flex items-center justify-center gap-2 border-[2px] border-jet bg-surface text-jet font-bold py-3 px-4 cursor-pointer hover:bg-oatmeal transition-colors text-sm uppercase tracking-wide"
+                    >
+                      ☁️ Drive
+                    </button>
                     {imageFiles.length > 0 && (
                       <button
                         type="button"
@@ -807,5 +855,71 @@ export default function AdminDashboard() {
         )}
       </div>
     </div>
+
+    {/* ── Drive Image Picker Modal ── */}
+    {showDrivePicker && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-jet/70" onClick={e => { if (e.target === e.currentTarget) setShowDrivePicker(false); }}>
+        <div className="bg-surface border-[3px] border-jet shadow-[8px_8px_0px_theme(colors.jet)] w-full max-w-3xl max-h-[85vh] flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b-[2px] border-jet px-6 py-4 shrink-0">
+            <div>
+              <h3 className="font-bold text-xl uppercase tracking-widest">Browse Drive</h3>
+              <p className="text-xs text-stone mt-0.5">{selectedDriveIds.size > 0 ? `${selectedDriveIds.size} selected` : 'Click images to select'}</p>
+            </div>
+            <button type="button" onClick={() => setShowDrivePicker(false)} className="text-2xl font-bold hover:text-stone transition-colors leading-none">✕</button>
+          </div>
+
+          {/* Grid */}
+          <div className="overflow-y-auto flex-1 p-4">
+            {drivePickerLoading ? (
+              <div className="flex items-center justify-center h-48 text-stone font-bold uppercase tracking-widest">Loading Drive files…</div>
+            ) : driveFiles.length === 0 ? (
+              <div className="flex items-center justify-center h-48 text-stone font-bold uppercase tracking-widest">No files found in Drive folder</div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                {driveFiles.map(file => {
+                  const selected = selectedDriveIds.has(file.id);
+                  return (
+                    <button
+                      key={file.id}
+                      type="button"
+                      onClick={() => toggleDriveFile(file.id)}
+                      className={`relative aspect-square border-[2px] overflow-hidden transition-all ${selected ? 'border-[#16A34A] scale-95 shadow-[0_0_0_3px_#16A34A]' : 'border-jet hover:border-stone'}`}
+                    >
+                      <img
+                        src={driveThumbUrl(file.id, 400)}
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                      {selected && (
+                        <div className="absolute inset-0 bg-[#16A34A]/20 flex items-center justify-center">
+                          <span className="w-7 h-7 rounded-full bg-[#16A34A] text-white flex items-center justify-center font-bold text-base">✓</span>
+                        </div>
+                      )}
+                      <p className="absolute bottom-0 left-0 right-0 bg-jet/70 text-white text-[9px] px-1 py-0.5 truncate">{file.name}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t-[2px] border-jet px-6 py-4 flex gap-3 justify-end shrink-0">
+            <button type="button" onClick={() => setShowDrivePicker(false)} className="border-[2px] border-jet font-bold px-6 py-2.5 hover:bg-oatmeal transition-colors uppercase tracking-wide text-sm">Cancel</button>
+            <button
+              type="button"
+              onClick={confirmDriveSelection}
+              disabled={selectedDriveIds.size === 0}
+              className="border-[2px] border-jet bg-jet text-surface font-bold px-6 py-2.5 hover:bg-stone transition-colors uppercase tracking-wide text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Add {selectedDriveIds.size > 0 ? `${selectedDriveIds.size} image${selectedDriveIds.size > 1 ? 's' : ''}` : 'Selected'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
