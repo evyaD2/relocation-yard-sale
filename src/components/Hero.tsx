@@ -16,10 +16,10 @@ export function Hero() {
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
         className="relative w-full max-w-[280px] sm:max-w-sm mx-auto mb-12 group cursor-default"
       >
-        <div className="absolute inset-0 bg-[#71B2D9] translate-x-3 translate-y-3 sm:translate-x-4 sm:translate-y-4 transition-transform group-hover:translate-x-5 group-hover:translate-y-5 duration-700 ease-out border-[3px] border-jet"></div>
-        <img 
-          src="/yardsale.jpg" 
-          alt="The Gidony Yard Sale Sign" 
+        <div className="absolute inset-0 bg-[#D4940A] translate-x-3 translate-y-3 sm:translate-x-4 sm:translate-y-4 transition-transform group-hover:translate-x-5 group-hover:translate-y-5 duration-700 ease-out border-[3px] border-jet"></div>
+        <img
+          src="/yardsale.jpg"
+          alt="The Edry Yard Sale Sign"
           className="relative w-full h-auto object-cover rounded-none border-[3px] border-jet bg-surface"
         />
       </motion.div>
@@ -31,23 +31,23 @@ export function Hero() {
         transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
         className="text-center max-w-2xl mx-auto"
       >
-        <h1 className="text-5xl sm:text-7xl font-bold font-heading text-jet mb-6 tracking-tight leading-none">
-          The Gidony's<br />
-          <span className="italic font-medium text-stone">Yard Sale</span>
+        <h1 className="text-5xl sm:text-7xl font-bold font-heading text-jet mb-6 leading-none">
+          The Edry's<br />
+          <span className="font-black text-[#C0392B]">Yard Sale</span>
         </h1>
-        <motion.div 
+        <motion.div
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
           transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="w-16 h-[2px] bg-jet mx-auto mb-6 origin-center"
+          className="w-16 h-[3px] bg-[#C0392B] mx-auto mb-6 origin-center"
         />
-        <motion.p 
+        <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 0.9 }}
           className="text-stone text-[11px] sm:text-[13px] font-bold tracking-[0.25em] uppercase w-full max-w-full"
         >
-          Curated pieces from our home <span className="mx-2 opacity-50">&bull;</span> Relocating to Vienna
+          פריטים מיוחדים מהבית <span className="mx-2 opacity-50">&bull;</span> הכל למכירה
         </motion.p>
       </motion.div>
     </div>

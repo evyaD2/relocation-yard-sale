@@ -15,7 +15,7 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
   const statusColors = {
     available: 'bg-surface text-jet',
     pending: 'bg-surface text-stone',
-    sold: 'bg-jet text-surface',
+    sold: 'bg-[#C0392B] text-surface',
   };
 
   const statusLabels = {

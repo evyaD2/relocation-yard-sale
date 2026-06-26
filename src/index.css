@@ -8,17 +8,17 @@
 @plugin "tailwindcss-animate";
 
 @theme {
-  --color-oatmeal: #F4F4F0;
-  --color-surface: #FFFFFF;
-  --color-jet: #000000;
-  --color-stone: #555555;
-  --color-border-subtle: #DDDDDD;
+  --color-oatmeal: #FBF2E3;
+  --color-surface: #FFFEF9;
+  --color-jet: #1C1008;
+  --color-stone: #7A6055;
+  --color-border-subtle: #D9C5B0;
   --color-whatsapp: #25D366;
-  
-  --font-heading: "Playfair Display", serif;
-  --font-sans: "Manrope", sans-serif;
-  --font-hebrew-heading: "Frank Ruhl Libre", serif;
-  --font-hebrew-sans: "Heebo", sans-serif;
+
+  --font-heading: "Outfit", sans-serif;
+  --font-sans: "DM Sans", sans-serif;
+  --font-hebrew-heading: "Rubik", sans-serif;
+  --font-hebrew-sans: "Rubik", sans-serif;
 }
 
 @layer base {

@@ -13,7 +13,7 @@ import type { ItemContact } from '../types';
 export function generateWhatsAppLink(itemTitle: string, itemPrice: number, contact: ItemContact): string {
   const GIDONY_WHATSAPP_NUMBER = CONTACT_NUMBERS[contact];
   
-  const rawText = `היי משפחת גדעוני!\n\nאשמח לפרטים על *${itemTitle}* שראיתי שנמכר ב-₪${itemPrice}.\n\nהאם זה עדיין רלוונטי?`;
+  const rawText = `היי משפחת אדרי!\n\nאשמח לפרטים על *${itemTitle}* שראיתי שנמכר ב-₪${itemPrice}.\n\nהאם זה עדיין רלוונטי?`;
   
   // URL encode the message string for safe transmission
   const encodedText = encodeURIComponent(rawText);

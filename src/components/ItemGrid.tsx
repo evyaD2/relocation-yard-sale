@@ -146,7 +146,7 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
                   style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
                 >
                   {activeCategory === 'All' && (
-                    <div className="absolute inset-0 bg-[#A8B5A1] border-[2px] border-jet z-0 transition-opacity duration-300" />
+                    <div className="absolute inset-0 bg-[#D4940A] border-[2px] border-jet z-0 transition-opacity duration-300" />
                   )}
                   <span className={`relative z-10 transition-colors duration-300 ${activeCategory === 'All' ? 'text-jet' : 'text-stone hover:text-jet'}`}>
                     All
@@ -164,7 +164,7 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
                         style={{ WebkitTapHighlightColor: 'transparent' }}
                       >
                         {activeCategory === category && (
-                          <div className="absolute inset-0 bg-[#A8B5A1] border-[2px] border-jet z-0 transition-opacity duration-300" />
+                          <div className="absolute inset-0 bg-[#D4940A] border-[2px] border-jet z-0 transition-opacity duration-300" />
                         )}
                       <span className={`relative z-10 transition-colors duration-300 ${activeCategory === category ? 'text-jet' : 'text-stone hover:text-jet'}`}>
                         {category}
