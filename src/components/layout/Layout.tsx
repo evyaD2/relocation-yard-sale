@@ -1,10 +1,31 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { motion, useScroll } from 'framer-motion';
+import { motion, useScroll, AnimatePresence } from 'framer-motion';
+import { Share2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ShareMenu } from '../ShareMenu';
 
 export function Layout({ children }: { children: ReactNode }) {
   const { scrollYProgress } = useScroll();
   const { t, toggle } = useLanguage();
+  const [showShare, setShowShare] = useState(false);
+
+  const handleShare = async () => {
+    const shareData = {
+      title: 'מכירת חצר של משפחת אדרי',
+      text: 'בדקו את מכירת החצר של משפחת אדרי! 🏡',
+      url: window.location.origin,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+      }
+    }
+    setShowShare(true);
+  };
 
   return (
     <div className="min-h-screen bg-oatmeal text-jet font-sans antialiased relative z-0">
@@ -36,18 +57,38 @@ export function Layout({ children }: { children: ReactNode }) {
         style={{ scaleX: scrollYProgress }}
       />
 
-      {/* Language toggle — fixed top-end corner, direction-aware */}
-      <button
-        onClick={toggle}
-        className="fixed top-4 end-4 z-50 px-3.5 py-1.5 text-xs font-bold tracking-widest uppercase bg-surface border border-border-subtle rounded-full shadow-sm hover:shadow-md hover:bg-oatmeal transition-all"
-        aria-label="Toggle language"
-      >
-        {t.switchLang}
-      </button>
+      {/* Fixed top-end controls: share + language toggle */}
+      <div className="fixed top-4 end-4 z-50 flex items-center gap-2">
+        <button
+          onClick={handleShare}
+          className="p-2 text-stone hover:text-jet bg-surface border border-border-subtle rounded-full shadow-sm hover:shadow-md hover:bg-oatmeal transition-all"
+          aria-label={t.shareApp}
+        >
+          <Share2 size={15} strokeWidth={2.5} />
+        </button>
+        <button
+          onClick={toggle}
+          className="px-3.5 py-1.5 text-xs font-bold tracking-widest uppercase bg-surface border border-border-subtle rounded-full shadow-sm hover:shadow-md hover:bg-oatmeal transition-all"
+          aria-label="Toggle language"
+        >
+          {t.switchLang}
+        </button>
+      </div>
 
       <main className="max-w-3xl mx-auto w-full flex flex-col items-center pb-20">
         {children}
       </main>
+
+      <AnimatePresence>
+        {showShare && (
+          <ShareMenu
+            url={window.location.origin}
+            title="מכירת חצר של משפחת אדרי"
+            text="בדקו את מכירת החצר של משפחת אדרי! 🏡"
+            onClose={() => setShowShare(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

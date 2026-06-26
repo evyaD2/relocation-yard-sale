@@ -6,12 +6,16 @@
 
 import { useState, useEffect } from 'react'
 import { Routes, Route, useSearchParams, useNavigationType } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Heart } from 'lucide-react'
 import { Layout } from './components/layout/Layout'
 import { Hero } from './components/Hero'
 import { ItemGrid } from './components/ItemGrid'
 import { ItemDetails } from './components/ItemDetails'
+import { WishlistModal } from './components/WishlistModal'
 import AdminDashboard from './pages/AdminDashboard'
 import { useLanguage } from './contexts/LanguageContext'
+import { useWishlist } from './contexts/WishlistContext'
 
 import { fetchItems } from './api/items'
 import { recordStorefrontVisit } from './api/items'
@@ -20,10 +24,12 @@ import { supabase } from './lib/supabase'
 
 function Storefront() {
   const { t } = useLanguage();
+  const { count: wishlistCount } = useWishlist();
   const [searchParams, setSearchParams] = useSearchParams();
   const navType = useNavigationType();
   const [items, setItems] = useState<YardSaleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showWishlist, setShowWishlist] = useState(false);
 
   // Buffered item state to prevent ghosting/flicker during swipes
   const [bufferItem, setBufferItem] = useState<YardSaleItem | null>(null);
@@ -59,15 +65,15 @@ function Storefront() {
     return () => { cancelled = true; };
   }, []);
 
-  // Prevent background scrolling when modal is open
+  // Prevent background scrolling when any overlay is open
   useEffect(() => {
-    if (itemIdParam) {
+    if (itemIdParam || showWishlist) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
     return () => { document.body.style.overflow = 'unset'; }
-  }, [itemIdParam]);
+  }, [itemIdParam, showWishlist]);
 
   const handleSelectItem = (item: YardSaleItem) => {
     setSearchParams({ item: item.id });
@@ -87,13 +93,48 @@ function Storefront() {
           <ItemGrid items={items} onSelectItem={handleSelectItem} />
         )}
       </Layout>
-      
-      {/* We keep the modal mounted but control its visibility via props. 
+
+      {/* Wishlist FAB — appears when there are liked items and no overlay is open */}
+      <AnimatePresence>
+        {wishlistCount > 0 && !itemIdParam && !showWishlist && (
+          <motion.button
+            key="wishlist-fab"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            onClick={() => setShowWishlist(true)}
+            className="fixed bottom-6 end-6 z-40 bg-[#E11D48] text-white rounded-full w-14 h-14 flex items-center justify-center shadow-xl shadow-red-500/25 hover:bg-[#C41230] active:scale-90 transition-colors"
+            aria-label={t.wishlist}
+          >
+            <Heart size={22} fill="white" stroke="white" />
+            <span className="absolute -top-1.5 -right-1.5 bg-jet text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center leading-none">
+              {wishlistCount}
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Wishlist Modal */}
+      <AnimatePresence>
+        {showWishlist && (
+          <WishlistModal
+            items={items}
+            onSelectItem={(item) => {
+              setShowWishlist(false);
+              handleSelectItem(item);
+            }}
+            onClose={() => setShowWishlist(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* We keep the modal mounted but control its visibility via props.
           This is the only way to ensure zero-flicker on mobile OS swipes. */}
       {bufferItem && (
-        <ItemDetails 
-          item={bufferItem} 
-          onBack={handleCloseModal} 
+        <ItemDetails
+          item={bufferItem}
+          onBack={handleCloseModal}
           isPopNavigation={navType === 'POP'}
           isVisible={!!itemIdParam}
         />

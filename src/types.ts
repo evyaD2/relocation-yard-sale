@@ -21,4 +21,7 @@ export interface YardSaleItem {
   contact: ItemContact;       // Identifies which WhatsApp number to use
   display_order?: number;     // For manual reordering
   delivery_time: 'flexible' | 'departure';
+  originalPrice?: number;     // Original retail price (shown as strikethrough to highlight discount)
+  brand?: string;             // Manufacturer or store name (e.g. "IKEA", "Samsung")
+  model?: string;             // Model name or number (e.g. "KALLAX", "Galaxy S21")
 }

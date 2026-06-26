@@ -7,6 +7,51 @@
 import { supabase } from '../lib/supabase';
 import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
 
+// ── Google Drive image source ──────────────────────────────────────────────────
+
+const GDRIVE_FOLDER_ID = '1WgVqUGgGc2uPwJYPFE7_84JRoZLbxg8h';
+const GDRIVE_API_KEY = import.meta.env.VITE_GDRIVE_API_KEY as string | undefined;
+const ITEM_SUFFIXES = ['', '-b', '-c', '-d', '-e', '-f', '-g', '-h'];
+const ITEM_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+type DriveFile = { id: string; name: string };
+// In-memory cache so we only call the Drive API once per page load
+let driveFileCache: Map<string, string> | null = null;
+
+/** Fetches the Drive folder once and returns a lowercase-filename → fileId map. */
+async function buildDriveFileMap(): Promise<Map<string, string>> {
+  if (driveFileCache) return driveFileCache;
+  const url = new URL('https://www.googleapis.com/drive/v3/files');
+  url.searchParams.set('q', `'${GDRIVE_FOLDER_ID}' in parents and trashed = false`);
+  url.searchParams.set('fields', 'files(id,name)');
+  url.searchParams.set('pageSize', '1000');
+  url.searchParams.set('key', GDRIVE_API_KEY!);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Drive API: ${res.status}`);
+  const data = await res.json() as { files: DriveFile[] };
+  driveFileCache = new Map(data.files.map(f => [f.name.toLowerCase(), f.id]));
+  return driveFileCache;
+}
+
+function driveUrl(fileId: string): string {
+  return `https://drive.google.com/uc?export=view&id=${fileId}`;
+}
+
+/** Resolves an item's Drive images using the naming convention: id, id-b, id-c … */
+function resolveItemDriveImages(itemId: string, fileMap: Map<string, string>): string[] {
+  const images: string[] = [];
+  for (const suffix of ITEM_SUFFIXES) {
+    let fileId: string | undefined;
+    for (const ext of ITEM_EXTENSIONS) {
+      fileId = fileMap.get(`${itemId}${suffix}.${ext}`);
+      if (fileId) break;
+    }
+    if (fileId) images.push(driveUrl(fileId));
+    else break; // images must be consecutive — stop at first gap
+  }
+  return images;
+}
+
 // ── Google Sheets public data source ──────────────────────────────────────────
 
 const SHEET_URL =
@@ -46,10 +91,11 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
   const rawContact = (get('contact') as string | null) ?? '';
   const contact: ItemContact = rawContact === 'wife' ? 'hadas' : 'evya';
 
-  // delivery_time: sheet may use "flexible" or anything else (e.g. "july_end")
-  const rawDelivery = (get('delivery_time') as string | null) ?? '';
+  // delivery_time: map departure/july-related values to 'departure', everything else to 'flexible'
+  const rawDelivery = ((get('delivery_time') as string | null) ?? '').toLowerCase();
+  const DEPARTURE_KEYWORDS = ['departure', 'july'];
   const delivery_time: 'flexible' | 'departure' =
-    rawDelivery === 'flexible' ? 'flexible' : 'departure';
+    DEPARTURE_KEYWORDS.some(k => rawDelivery.includes(k)) ? 'departure' : 'flexible';
 
   // status: guard against unexpected values
   const rawStatus = (get('status') as string | null) ?? 'available';
@@ -60,6 +106,10 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
 
   const dimensions = (get('dimensions') as string | null) || undefined;
   const fbMarketplaceLink = (get('fbMarketplaceLink') as string | null) || undefined;
+  const rawOriginalPrice = get('original_price');
+  const originalPrice = rawOriginalPrice != null && rawOriginalPrice !== '' ? Number(rawOriginalPrice) : undefined;
+  const brand = (get('brand') as string | null) || undefined;
+  const model = (get('model') as string | null) || undefined;
 
   return {
     id: String(rawId),
@@ -75,6 +125,9 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
     contact,
     display_order: Number(get('display_order') ?? 0),
     delivery_time,
+    originalPrice,
+    brand,
+    model,
   };
 }
 
@@ -89,11 +142,27 @@ export async function fetchItems(): Promise<YardSaleItem[]> {
 
     const items = rows
       .map(row => rowToItem(row, cols))
-      .filter((item): item is YardSaleItem => item !== null)
+      .filter((item): item is YardSaleItem => item !== null);
+
+    // Fetch Drive folder file list once, then resolve images per item
+    let driveImageArrays: string[][] = items.map(() => []);
+    if (GDRIVE_API_KEY) {
+      try {
+        const fileMap = await buildDriveFileMap();
+        driveImageArrays = items.map(item => resolveItemDriveImages(item.id, fileMap));
+      } catch (err) {
+        console.error('Drive image fetch failed:', err);
+      }
+    }
+
+    return items
+      .map((item, i) => ({
+        ...item,
+        images: [...driveImageArrays[i], ...item.images],
+      }))
       // Preserve the same descending display_order sort as the original Supabase query
       .sort((a, b) => (b.display_order ?? 0) - (a.display_order ?? 0));
 
-    return items;
   } catch (err) {
     console.error('Error fetching items from Google Sheets:', err);
     return [];

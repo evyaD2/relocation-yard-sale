@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { LanguageProvider } from './contexts/LanguageContext'
+import { WishlistProvider } from './contexts/WishlistContext'
 import './index.css'
 import App from './App.tsx'
 
@@ -16,8 +17,10 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <LanguageProvider>
-        <App />
-        <Analytics />
+        <WishlistProvider>
+          <App />
+          <Analytics />
+        </WishlistProvider>
       </LanguageProvider>
     </BrowserRouter>
   </StrictMode>,

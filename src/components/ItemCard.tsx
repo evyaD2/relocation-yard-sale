@@ -1,5 +1,7 @@
+import { Heart } from 'lucide-react';
 import type { YardSaleItem } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useWishlist } from '../contexts/WishlistContext';
 
 interface ItemCardProps {
   item: YardSaleItem;
@@ -8,7 +10,9 @@ interface ItemCardProps {
 
 export function ItemCard({ item, onClick }: ItemCardProps) {
   const { t } = useLanguage();
+  const { isLiked, toggle } = useWishlist();
   const isSold = item.status === 'sold';
+  const liked = isLiked(item.id);
 
   return (
     <div
@@ -35,6 +39,20 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
         >
           {isSold ? t.sold : t.available}
         </div>
+
+        {/* Wishlist heart — direction-aware, opposite corner from status */}
+        <button
+          onClick={e => { e.stopPropagation(); toggle(item.id); }}
+          className="absolute top-3 end-3 z-10 p-1.5 bg-white/85 backdrop-blur-sm rounded-full shadow-sm hover:bg-white transition-all active:scale-90"
+          aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'}
+        >
+          <Heart
+            size={15}
+            fill={liked ? '#E11D48' : 'none'}
+            stroke={liked ? '#E11D48' : '#6E6E73'}
+            strokeWidth={2}
+          />
+        </button>
       </div>
 
       {/* Info */}
@@ -45,9 +63,21 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
         >
           {item.title}
         </h3>
-        <p className="font-black text-xl sm:text-2xl text-jet mt-1" dir="ltr">
-          ₪{item.price.toLocaleString()}
-        </p>
+        {(item.brand || item.model) && (
+          <p className="text-stone text-xs leading-snug line-clamp-1" dir="auto">
+            {[item.brand, item.model].filter(Boolean).join(' · ')}
+          </p>
+        )}
+        <div className="flex items-baseline gap-2 mt-1" dir="ltr">
+          <p className="font-black text-xl sm:text-2xl text-jet">
+            ₪{item.price.toLocaleString()}
+          </p>
+          {item.originalPrice && item.originalPrice > item.price && (
+            <p className="text-stone text-sm line-through">
+              ₪{item.originalPrice.toLocaleString()}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -23,6 +23,15 @@ export const T = {
     ctaMarketplace: 'מרקטפלייס',
     linkCopied: '!הקישור הועתק',
     switchLang: 'EN',
+    wishlist: 'מועדפים',
+    wishlistEmpty: 'הרשימה ריקה',
+    wishlistEmptyHint: 'לחץ/י על ♡ כדי להוסיף פריטים',
+    inquireAll: 'שאל/י על כל הפריטים בוואטסאפ',
+    shareApp: 'שתף',
+    copyLink: 'העתק קישור',
+    originalPriceLabel: 'מחיר מקורי',
+    brandLabel: 'מותג / חנות',
+    modelLabel: 'דגם',
   },
   en: {
     heroFamily: "The Edry's",
@@ -44,14 +53,32 @@ export const T = {
     ctaMarketplace: 'Marketplace',
     linkCopied: 'Link copied!',
     switchLang: 'עב',
+    wishlist: 'Wishlist',
+    wishlistEmpty: 'Your wishlist is empty',
+    wishlistEmptyHint: 'Tap ♡ on any item to save it here',
+    inquireAll: 'Inquire about all items on WhatsApp',
+    shareApp: 'Share',
+    copyLink: 'Copy Link',
+    originalPriceLabel: 'Original Price',
+    brandLabel: 'Brand / Store',
+    modelLabel: 'Model',
   },
 } as const;
 
 /** Localised display names for category slugs coming from the sheet. */
 export const CATEGORY_LABELS: Record<string, Record<Lang, string>> = {
-  appliance:  { he: 'מוצרי חשמל', en: 'Appliances' },
-  furniture:  { he: 'רהיטים',     en: 'Furniture'  },
-  other:      { he: 'אחר',        en: 'Other'       },
+  appliance: { he: 'מוצרי חשמל', en: 'Appliances' },
+  furniture: { he: 'רהיטים', en: 'Furniture' },
+  other:     { he: 'אחר', en: 'Other' },
+};
+
+/** Localised display names for condition values coming from the sheet. */
+export const CONDITION_LABELS: Record<string, Record<Lang, string>> = {
+  excellent: { he: 'מצוין',    en: 'Excellent' },
+  like_new:  { he: 'כמו חדש', en: 'Like New'  },
+  good:      { he: 'טוב',     en: 'Good'       },
+  fair:      { he: 'סביר',    en: 'Fair'        },
+  used:      { he: 'משומש',   en: 'Used'        },
 };
 
 type Translations = typeof T.he | typeof T.en;
