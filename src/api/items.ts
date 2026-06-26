@@ -34,7 +34,7 @@ async function buildDriveFileMap(): Promise<Map<string, string>> {
 }
 
 function driveUrl(fileId: string): string {
-  return `https://drive.google.com/uc?export=view&id=${fileId}`;
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=s2000`;
 }
 
 /** Resolves an item's Drive images using the naming convention: id, id-b, id-c … */
@@ -146,12 +146,15 @@ export async function fetchItems(): Promise<YardSaleItem[]> {
 
     // Fetch Drive folder file list once, then resolve images per item
     let driveImageArrays: string[][] = items.map(() => []);
-    if (GDRIVE_API_KEY) {
+    if (!GDRIVE_API_KEY) {
+      console.warn('[Drive] VITE_GDRIVE_API_KEY is not set — restart the dev server after adding .env.local');
+    } else {
       try {
         const fileMap = await buildDriveFileMap();
+        console.info(`[Drive] Loaded ${fileMap.size} files from folder`);
         driveImageArrays = items.map(item => resolveItemDriveImages(item.id, fileMap));
       } catch (err) {
-        console.error('Drive image fetch failed:', err);
+        console.error('[Drive] image fetch failed:', err);
       }
     }
 
