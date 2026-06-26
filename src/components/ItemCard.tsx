@@ -1,10 +1,5 @@
-/**
- * @file ItemCard.tsx
- * @author Dor Gidony
- * @copyright © 2026 Dor Gidony. All rights reserved.
- */
-
 import type { YardSaleItem } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ItemCardProps {
   item: YardSaleItem;
@@ -12,41 +7,45 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ item, onClick }: ItemCardProps) {
-  const statusColors = {
-    available: 'bg-surface text-jet',
-    pending: 'bg-surface text-stone',
-    sold: 'bg-[#C0392B] text-surface',
-  };
-
-  const statusLabels = {
-    available: 'זמין',
-    pending: 'זמין',
-    sold: 'נמכר',
-  };
+  const { t } = useLanguage();
+  const isSold = item.status === 'sold';
 
   return (
-    <div 
+    <div
       onClick={() => onClick(item)}
-      className="group flex flex-col cursor-pointer outline-none bg-surface border-[3px] border-jet"
+      className={`group flex flex-col cursor-pointer bg-surface rounded-2xl overflow-hidden shadow-sm border border-border-subtle transition-all duration-300 ${
+        !isSold ? 'hover:shadow-xl hover:-translate-y-1' : 'opacity-65'
+      }`}
     >
-      <div className="relative aspect-square overflow-hidden bg-border-subtle border-b-[3px] border-jet">
-        {/* Subtle sophisticated hover zoom */}
-        <img 
-          src={item.images[0]} 
-          alt={item.title} 
-          className={`w-full h-full object-cover transition-transform duration-1000 ease-out ${item.status !== 'sold' ? 'group-hover:scale-105' : 'grayscale opacity-70'}`}
+      {/* Image */}
+      <div className="relative aspect-square overflow-hidden bg-oatmeal">
+        <img
+          src={item.images[0]}
+          alt={item.title}
+          className={`w-full h-full object-cover transition-transform duration-700 ease-out ${
+            !isSold ? 'group-hover:scale-105' : 'grayscale'
+          }`}
           loading="lazy"
         />
-        <div className={`absolute top-2 left-2 sm:top-4 sm:left-4 px-1.5 py-0.5 sm:px-3 sm:py-1.5 text-[8px] sm:text-[10px] font-bold tracking-widest uppercase border-[1.5px] sm:border-[2px] border-jet ${statusColors[item.status]}`}>
-          {statusLabels[item.status]}
+        {/* Status badge — direction-aware via start-3 */}
+        <div
+          className={`absolute top-3 start-3 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide uppercase rounded-full ${
+            isSold ? 'bg-[#DC2626] text-white' : 'bg-[#16A34A] text-white'
+          }`}
+        >
+          {isSold ? t.sold : t.available}
         </div>
       </div>
-      
-      <div className="flex flex-col h-full bg-surface p-2.5 sm:p-5">
-        <h3 className="font-heading font-bold text-jet text-sm sm:text-2xl leading-snug break-words mb-1 sm:mb-2 line-clamp-2" dir="rtl">
+
+      {/* Info */}
+      <div className="flex flex-col flex-1 p-3 sm:p-4 gap-1">
+        <h3
+          className="font-semibold text-jet text-sm sm:text-base leading-snug line-clamp-2"
+          dir="auto"
+        >
           {item.title}
         </h3>
-        <p className="font-sans font-bold text-sm sm:text-2xl text-stone mt-auto tracking-tight shrink-0">
+        <p className="font-black text-xl sm:text-2xl text-jet mt-1" dir="ltr">
           ₪{item.price.toLocaleString()}
         </p>
       </div>

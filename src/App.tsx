@@ -11,6 +11,7 @@ import { Hero } from './components/Hero'
 import { ItemGrid } from './components/ItemGrid'
 import { ItemDetails } from './components/ItemDetails'
 import AdminDashboard from './pages/AdminDashboard'
+import { useLanguage } from './contexts/LanguageContext'
 
 import { fetchItems } from './api/items'
 import { recordStorefrontVisit } from './api/items'
@@ -18,6 +19,7 @@ import type { YardSaleItem } from './types'
 import { supabase } from './lib/supabase'
 
 function Storefront() {
+  const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const navType = useNavigationType();
   const [items, setItems] = useState<YardSaleItem[]>([]);
@@ -80,7 +82,7 @@ function Storefront() {
       <Layout>
         <Hero />
         {loading ? (
-          <div className="py-20 text-center text-jet font-bold animate-pulse text-xl">Loading Inventory...</div>
+          <div className="py-20 text-center text-stone font-medium animate-pulse text-lg">{t.loading}</div>
         ) : (
           <ItemGrid items={items} onSelectItem={handleSelectItem} />
         )}

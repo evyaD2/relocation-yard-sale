@@ -1,53 +1,62 @@
-/**
- * @file Hero.tsx
- * @author Dor Gidony
- * @copyright © 2026 Dor Gidony. All rights reserved.
- */
-
 import { motion } from 'framer-motion';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export function Hero() {
+  const { t } = useLanguage();
+
   return (
-    <div className="w-full flex flex-col items-center justify-center pt-20 pb-16 px-6 overflow-hidden">
-      {/* Editorial Sharp Image Frame with Crimson Shadow Offset */}
-      <motion.div 
-        initial={{ opacity: 0, y: 50, rotate: -3 }}
+    <div className="w-full flex flex-col items-center justify-center pt-16 pb-10 px-6 overflow-hidden">
+      {/* Image with CTA-orange offset shadow */}
+      <motion.div
+        initial={{ opacity: 0, y: 50, rotate: -2 }}
         animate={{ opacity: 1, y: 0, rotate: 0 }}
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-[280px] sm:max-w-sm mx-auto mb-12 group cursor-default"
+        className="relative w-full max-w-[240px] sm:max-w-xs mx-auto mb-10 group cursor-default"
       >
-        <div className="absolute inset-0 bg-[#D4940A] translate-x-3 translate-y-3 sm:translate-x-4 sm:translate-y-4 transition-transform group-hover:translate-x-5 group-hover:translate-y-5 duration-700 ease-out border-[3px] border-jet"></div>
+        <div className="absolute inset-0 bg-[#2563EB] translate-x-3 translate-y-3 sm:translate-x-4 sm:translate-y-4 transition-transform group-hover:translate-x-5 group-hover:translate-y-5 duration-700 ease-out rounded-2xl" />
         <img
-          src="/yardsale.jpg"
-          alt="The Edry Yard Sale Sign"
-          className="relative w-full h-auto object-cover rounded-none border-[3px] border-jet bg-surface"
+          src="/family.jpg"
+          alt="משפחת אדרי"
+          className="relative w-full h-auto object-cover rounded-2xl bg-surface shadow-sm"
         />
       </motion.div>
-      
-      {/* Typography */}
-      <motion.div 
+
+      {/* Typography block */}
+      <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        className="text-center max-w-2xl mx-auto"
+        className="text-center max-w-xl mx-auto"
       >
-        <h1 className="text-5xl sm:text-7xl font-bold font-heading text-jet mb-6 leading-none">
-          The Edry's<br />
-          <span className="font-black text-[#C0392B]">Yard Sale</span>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.7, delay: 0.4 }}
+          className="text-jet text-2xl sm:text-3xl font-bold tracking-wide mb-3"
+        >
+          {t.heroFamily}
+        </motion.p>
+
+        <h1 className="text-5xl sm:text-[5.5rem] font-black text-jet leading-none mb-4">
+          {t.heroTitle}
         </h1>
+
         <motion.div
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
-          transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="w-16 h-[3px] bg-[#C0392B] mx-auto mb-6 origin-center"
+          transition={{ duration: 0.7, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="w-14 h-1 bg-[#2563EB] mx-auto mb-5 origin-center rounded-full"
         />
+
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 0.9 }}
-          className="text-stone text-[11px] sm:text-[13px] font-bold tracking-[0.25em] uppercase w-full max-w-full"
+          className="text-stone text-sm sm:text-base font-medium"
         >
-          פריטים מיוחדים מהבית <span className="mx-2 opacity-50">&bull;</span> הכל למכירה
+          {t.heroTagline}{' '}
+          <span className="text-[#2563EB] font-bold mx-1">•</span>{' '}
+          <span className="font-bold text-jet">{t.heroTagline2}</span>
         </motion.p>
       </motion.div>
     </div>

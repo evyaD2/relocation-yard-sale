@@ -5,7 +5,7 @@
  */
 
 export type ItemStatus = 'available' | 'pending' | 'sold';
-export type ItemContact = 'dor' | 'neri';
+export type ItemContact = 'evya' | 'hadas';
 
 export interface YardSaleItem {
   id: string;                 // Unique identifier 

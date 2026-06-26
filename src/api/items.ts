@@ -5,20 +5,99 @@
  */
 
 import { supabase } from '../lib/supabase';
-import type { YardSaleItem, ItemStatus } from '../types';
+import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
+
+// ── Google Sheets public data source ──────────────────────────────────────────
+
+const SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1PbC77GYCxuE5VnTWKoz-jSFy7maXl8ITrQqkz1FY4Hs/gviz/tq?tqx=out:json';
+
+/** Strips the JSONP wrapper Google Sheets adds around the response. */
+function extractJSON(raw: string): any {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf(')');
+  return JSON.parse(raw.slice(start, end));
+}
+
+/** Safely reads a cell value — returns null if the cell or its value is absent. */
+function cellVal(cell: any): any {
+  return cell?.v ?? null;
+}
+
+/** Maps a single Sheets row to a YardSaleItem. Returns null for incomplete rows. */
+function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | null {
+  const cells: any[] = row.c ?? [];
+  const idx = Object.fromEntries(cols.map((c, i) => [c.label, i]));
+
+  const get = (label: string) => cellVal(cells[idx[label]]);
+
+  const rawId = get('id');
+  const title = get('title') as string | null;
+  if (rawId == null || !title) return null;
+
+  // images: single URL or comma-separated list
+  const rawImages = (get('images') as string | null) ?? '';
+  const images = rawImages
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  // contact: sheet uses "me" / "wife" — map to known ItemContact values
+  const rawContact = (get('contact') as string | null) ?? '';
+  const contact: ItemContact = rawContact === 'wife' ? 'hadas' : 'evya';
+
+  // delivery_time: sheet may use "flexible" or anything else (e.g. "july_end")
+  const rawDelivery = (get('delivery_time') as string | null) ?? '';
+  const delivery_time: 'flexible' | 'departure' =
+    rawDelivery === 'flexible' ? 'flexible' : 'departure';
+
+  // status: guard against unexpected values
+  const rawStatus = (get('status') as string | null) ?? 'available';
+  const VALID_STATUSES = new Set(['available', 'pending', 'sold']);
+  const status: ItemStatus = VALID_STATUSES.has(rawStatus)
+    ? (rawStatus as ItemStatus)
+    : 'available';
+
+  const dimensions = (get('dimensions') as string | null) || undefined;
+  const fbMarketplaceLink = (get('fbMarketplaceLink') as string | null) || undefined;
+
+  return {
+    id: String(rawId),
+    title,
+    description: (get('description') as string | null) ?? '',
+    price: Number(get('price') ?? 0),
+    condition: (get('condition') as string | null) ?? '',
+    category: (get('category') as string | null) ?? '',
+    status,
+    images,
+    dimensions,
+    fbMarketplaceLink,
+    contact,
+    display_order: Number(get('display_order') ?? 0),
+    delivery_time,
+  };
+}
 
 export async function fetchItems(): Promise<YardSaleItem[]> {
-  const { data, error } = await supabase
-    .from('yard_sale_items')
-    .select('*')
-    .order('display_order', { ascending: false });
+  try {
+    const res = await fetch(SHEET_URL);
+    if (!res.ok) throw new Error(`Sheet fetch failed: ${res.status}`);
 
-  if (error) {
-    console.error('Error fetching items:', error);
+    const payload = extractJSON(await res.text());
+    const cols: Array<{ label: string }> = payload.table.cols;
+    const rows: any[] = payload.table.rows ?? [];
+
+    const items = rows
+      .map(row => rowToItem(row, cols))
+      .filter((item): item is YardSaleItem => item !== null)
+      // Preserve the same descending display_order sort as the original Supabase query
+      .sort((a, b) => (b.display_order ?? 0) - (a.display_order ?? 0));
+
+    return items;
+  } catch (err) {
+    console.error('Error fetching items from Google Sheets:', err);
     return [];
   }
-  
-  return data as YardSaleItem[];
 }
 
 export async function updateItemStatus(id: string, status: ItemStatus): Promise<boolean> {

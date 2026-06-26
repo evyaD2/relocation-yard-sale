@@ -8,26 +8,30 @@
 @plugin "tailwindcss-animate";
 
 @theme {
-  --color-oatmeal: #FBF2E3;
-  --color-surface: #FFFEF9;
-  --color-jet: #1C1008;
-  --color-stone: #7A6055;
-  --color-border-subtle: #D9C5B0;
+  /* 60 % — canvas */
+  --color-oatmeal: #FFFFFF;
+  /* 30 % — surfaces / cards */
+  --color-surface: #F5F5F7;
+  /* typography */
+  --color-jet: #111111;
+  --color-stone: #6E6E73;
+  --color-border-subtle: #E8E8ED;
+  /* retained utility */
   --color-whatsapp: #25D366;
 
-  --font-heading: "Outfit", sans-serif;
-  --font-sans: "DM Sans", sans-serif;
+  --font-heading: "Rubik", sans-serif;
+  --font-sans: "Rubik", sans-serif;
   --font-hebrew-heading: "Rubik", sans-serif;
   --font-hebrew-sans: "Rubik", sans-serif;
 }
 
 @layer base {
   body {
-    @apply bg-oatmeal text-jet font-sans antialiased selection:bg-jet selection:text-white;
+    @apply bg-oatmeal text-jet font-sans antialiased selection:bg-[#2563EB] selection:text-white;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
-    @apply font-heading text-jet tracking-tight;
+    @apply font-heading text-jet;
   }
 }
 

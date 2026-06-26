@@ -7,6 +7,6 @@
 import type { ItemContact } from '../types';
 
 export const CONTACT_NUMBERS: Record<ItemContact, string> = {
-  dor: '972525441079',
-  neri: '972525695656'
+  evya: '972502262026',
+  hadas: '972523224218',
 };

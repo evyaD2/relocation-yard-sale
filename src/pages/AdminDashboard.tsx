@@ -111,8 +111,8 @@ function SortableItem({ item, onDelete, onEdit, onStatusChange, onContactChange 
           onChange={(e) => onContactChange(item.id, e.target.value as ItemContact)}
           className="flex-1 sm:flex-none border-[2px] border-jet bg-transparent p-2 font-bold cursor-pointer outline-none hover:bg-jet hover:text-surface transition-colors"
         >
-          <option value="dor">Dor's WhatsApp</option>
-          <option value="neri">Neri's WhatsApp</option>
+          <option value="evya">Evya's WhatsApp</option>
+          <option value="hadas">Hadas's WhatsApp</option>
         </select>
       </div>
     </div>
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<YardSaleItem>>({
-    title: '', description: '', price: 0, condition: '', category: '', status: 'available', images: [], dimensions: '', contact: 'neri', delivery_time: 'flexible'
+    title: '', description: '', price: 0, condition: '', category: '', status: 'available', images: [], dimensions: '', contact: 'hadas', delivery_time: 'flexible'
   });
 
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
 
   const openAddForm = () => {
     setEditingId(null);
-    setFormData({ title: '', description: '', price: 0, condition: '', category: categories[0]?.name || '', status: 'available', images: [], dimensions: '', contact: 'neri', delivery_time: 'flexible' });
+    setFormData({ title: '', description: '', price: 0, condition: '', category: categories[0]?.name || '', status: 'available', images: [], dimensions: '', contact: 'hadas', delivery_time: 'flexible' });
     setImageFiles([]);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
