@@ -50,8 +50,14 @@ export function ShareMenu({ url, title, text, onClose }: ShareMenuProps) {
   ];
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(url);
-    alert(t.linkCopied);
+    try {
+      await navigator.clipboard.writeText(url);
+      alert(t.linkCopied);
+    } catch {
+      // Clipboard API can reject on insecure contexts or denied permission —
+      // fall back to a manual prompt so the user can still copy the link.
+      window.prompt(t.copyLink, url);
+    }
     onClose();
   };
 

@@ -2,6 +2,7 @@ import { Heart } from 'lucide-react';
 import type { YardSaleItem } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useWishlist } from '../contexts/WishlistContext';
+import { IMAGE_PLACEHOLDER, handleImageError } from '../utils/imageFallback';
 
 interface ItemCardProps {
   item: YardSaleItem;
@@ -24,8 +25,9 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
       {/* Image */}
       <div className="relative aspect-square overflow-hidden bg-oatmeal">
         <img
-          src={item.images[0]}
+          src={item.images[0] || IMAGE_PLACEHOLDER}
           alt={item.title}
+          onError={handleImageError}
           className={`w-full h-full object-cover transition-transform duration-700 ease-out ${
             !isSold ? 'group-hover:scale-105' : 'grayscale'
           }`}
@@ -40,19 +42,21 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
           {isSold ? t.sold : t.available}
         </div>
 
-        {/* Wishlist heart — direction-aware, opposite corner from status */}
-        <button
-          onClick={e => { e.stopPropagation(); toggle(item.id); }}
-          className="absolute top-3 end-3 z-10 p-1.5 bg-white/85 backdrop-blur-sm rounded-full shadow-sm hover:bg-white transition-all active:scale-90"
-          aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'}
-        >
-          <Heart
-            size={15}
-            fill={liked ? '#E11D48' : 'none'}
-            stroke={liked ? '#E11D48' : '#6E6E73'}
-            strokeWidth={2}
-          />
-        </button>
+        {/* Wishlist heart — direction-aware, opposite corner from status. Hidden for sold items. */}
+        {!isSold && (
+          <button
+            onClick={e => { e.stopPropagation(); toggle(item.id); }}
+            className="absolute top-3 end-3 z-10 p-1.5 bg-white/85 backdrop-blur-sm rounded-full shadow-sm hover:bg-white transition-all active:scale-90"
+            aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'}
+          >
+            <Heart
+              size={15}
+              fill={liked ? '#E11D48' : 'none'}
+              stroke={liked ? '#E11D48' : '#6E6E73'}
+              strokeWidth={2}
+            />
+          </button>
+        )}
       </div>
 
       {/* Info */}

@@ -34,6 +34,7 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
   const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [hideSold, setHideSold] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -62,10 +63,24 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
     return ['All', ...Array.from(cats)];
   }, [items]);
 
+  // Count of available (non-sold) items per category, plus 'All' total.
+  const availableCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: 0 };
+    for (const item of items) {
+      if (item.status === 'sold') continue;
+      counts.All += 1;
+      counts[item.category] = (counts[item.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
+
   const filteredItems = useMemo(() => {
-    if (activeCategory === 'All') return items;
-    return items.filter(item => item.category === activeCategory);
-  }, [items, activeCategory]);
+    let result = activeCategory === 'All'
+      ? items
+      : items.filter(item => item.category === activeCategory);
+    if (hideSold) result = result.filter(item => item.status !== 'sold');
+    return result;
+  }, [items, activeCategory, hideSold]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -102,7 +117,7 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.8 }}
-        className="sticky top-4 z-40 w-full px-4 sm:max-w-fit mx-auto overflow-visible select-none font-sans"
+        className="sticky top-4 z-40 w-full ps-4 pe-20 sm:px-4 sm:max-w-fit mx-auto overflow-visible select-none font-sans"
       >
         <div className="relative overflow-hidden rounded-2xl shadow-lg">
           {/* Admin swipe drawer revealed behind */}
@@ -150,6 +165,9 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
             >
               {t.allCategories}
+              <span className="ms-1.5 font-semibold opacity-60 tabular-nums">
+                {availableCounts.All ?? 0}
+              </span>
             </button>
 
             <div className="w-px h-5 bg-border-subtle shrink-0" />
@@ -171,9 +189,29 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
                   style={{ WebkitTapHighlightColor: 'transparent' }}
                 >
                   {labelForCategory(category)}
+                  <span className="ms-1.5 font-semibold opacity-60 tabular-nums">
+                    {availableCounts[category] ?? 0}
+                  </span>
                 </button>
               ))}
             </div>
+
+            <div className="w-px h-5 bg-border-subtle shrink-0" />
+
+            {/* Hide-sold toggle — sits inline with the filters, subtle */}
+            <button
+              onClick={() => setHideSold(v => !v)}
+              role="switch"
+              aria-checked={hideSold}
+              className={`shrink-0 px-3 sm:px-3.5 py-2 sm:py-2.5 text-[10px] sm:text-xs font-medium tracking-wide rounded-full outline-none transition-all duration-200 whitespace-nowrap ${
+                hideSold
+                  ? 'text-jet bg-oatmeal'
+                  : 'text-stone/70 hover:text-jet hover:bg-oatmeal'
+              }`}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              {t.hideSold}
+            </button>
           </motion.div>
         </div>
       </motion.div>

@@ -134,6 +134,8 @@ function Storefront() {
       {bufferItem && (
         <ItemDetails
           item={bufferItem}
+          items={items}
+          onNavigate={handleSelectItem}
           onBack={handleCloseModal}
           isPopNavigation={navType === 'POP'}
           isVisible={!!itemIdParam}

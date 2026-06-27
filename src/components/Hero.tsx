@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { MapPin } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 export function Hero() {
@@ -58,6 +59,16 @@ export function Hero() {
           <span className="text-[#2563EB] font-bold mx-1">•</span>{' '}
           <span className="font-bold text-jet">{t.heroTagline2}</span>
         </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 1.1 }}
+          className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border-subtle shadow-sm text-stone text-xs sm:text-sm font-medium"
+        >
+          <MapPin size={15} className="shrink-0 text-[#2563EB]" strokeWidth={2.5} />
+          <span>{t.pickupInfo}</span>
+        </motion.div>
       </motion.div>
     </div>
   );

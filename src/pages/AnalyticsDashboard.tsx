@@ -14,7 +14,7 @@ import {
   fetchTotalShares,
 } from '../api/items';
 import type { ItemViewStat, DailyViewStat, StorefrontStats, ItemDailyStat, ItemShareStat } from '../api/items';
-import { BarChart2, Smartphone, Monitor, Tablet, TrendingUp, Eye, Store, Share2 } from 'lucide-react';
+import { BarChart2, Smartphone, Monitor, Tablet, TrendingUp, Eye, Store, Share2, Download, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -418,6 +418,143 @@ function ItemHistogram({ stats }: { stats: ItemViewStat[] }) {
   );
 }
 
+// ── Per-item breakdown table (sortable, exportable) ───────────────────────────
+
+interface BreakdownRow {
+  item_id: string;
+  item_title: string;
+  total_views: number;
+  total_shares: number;
+  share_rate: number; // shares / views
+  mobile_views: number;
+  tablet_views: number;
+  desktop_views: number;
+  mobile_pct: number;
+}
+
+type SortKey = keyof Omit<BreakdownRow, 'item_id' | 'item_title'> | 'item_title';
+
+function buildBreakdownRows(stats: ItemViewStat[], shareStats: ItemShareStat[]): BreakdownRow[] {
+  const shareMap = new Map(shareStats.map(s => [s.item_id, s.total_shares]));
+  return stats.map(s => {
+    const total_shares = shareMap.get(s.item_id) ?? 0;
+    return {
+      item_id: s.item_id,
+      item_title: s.item_title,
+      total_views: s.total_views,
+      total_shares,
+      share_rate: s.total_views ? total_shares / s.total_views : 0,
+      mobile_views: s.mobile_views,
+      tablet_views: s.tablet_views,
+      desktop_views: s.desktop_views,
+      mobile_pct: s.total_views ? s.mobile_views / s.total_views : 0,
+    };
+  });
+}
+
+function exportBreakdownCsv(rows: BreakdownRow[]) {
+  const header = ['Item', 'Views', 'Shares', 'Share Rate %', 'Mobile', 'Tablet', 'Desktop', 'Mobile %'];
+  const body = rows.map(r => [
+    `"${r.item_title.replace(/"/g, '""')}"`,
+    r.total_views,
+    r.total_shares,
+    (r.share_rate * 100).toFixed(1),
+    r.mobile_views,
+    r.tablet_views,
+    r.desktop_views,
+    (r.mobile_pct * 100).toFixed(0),
+  ].join(','));
+  const csv = [header.join(','), ...body].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ItemBreakdownTable({ stats, shareStats }: { stats: ItemViewStat[]; shareStats: ItemShareStat[] }) {
+  const [sortKey, setSortKey] = useState<SortKey>('total_views');
+  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+
+  const rows = buildBreakdownRows(stats, shareStats);
+  const sorted = [...rows].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    const cmp = typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+
+  function setSort(key: SortKey) {
+    if (key === sortKey) setDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setDir(key === 'item_title' ? 'asc' : 'desc'); }
+  }
+
+  const cols: { key: SortKey; label: string; numeric: boolean }[] = [
+    { key: 'item_title', label: 'Item', numeric: false },
+    { key: 'total_views', label: 'Views', numeric: true },
+    { key: 'total_shares', label: 'Shares', numeric: true },
+    { key: 'share_rate', label: 'Share %', numeric: true },
+    { key: 'mobile_views', label: 'Mobile', numeric: true },
+    { key: 'tablet_views', label: 'Tablet', numeric: true },
+    { key: 'desktop_views', label: 'Desktop', numeric: true },
+  ];
+
+  const fmt = (r: BreakdownRow, key: SortKey): string => {
+    if (key === 'item_title') return r.item_title;
+    if (key === 'share_rate') return `${(r.share_rate * 100).toFixed(0)}%`;
+    return String(r[key]);
+  };
+
+  return (
+    <div className="-mx-2 sm:mx-0 overflow-x-auto">
+      <table className="w-full border-collapse text-sm min-w-[560px]">
+        <thead>
+          <tr className="border-b-[2px] border-jet">
+            {cols.map(col => {
+              const active = sortKey === col.key;
+              return (
+                <th
+                  key={col.key}
+                  onClick={() => setSort(col.key)}
+                  className={`py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] cursor-pointer select-none whitespace-nowrap hover:bg-oatmeal transition-colors ${
+                    col.numeric ? 'text-right' : 'text-left'
+                  } ${active ? 'text-jet' : 'text-stone'}`}
+                >
+                  <span className={`inline-flex items-center gap-1 ${col.numeric ? 'flex-row-reverse' : ''}`}>
+                    {col.label}
+                    {active
+                      ? (dir === 'asc' ? <ArrowUp size={11} strokeWidth={3} /> : <ArrowDown size={11} strokeWidth={3} />)
+                      : <span className="w-[11px] inline-block" />}
+                  </span>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r, i) => (
+            <tr key={r.item_id} className={`border-b border-border-subtle hover:bg-oatmeal transition-colors ${i % 2 ? 'bg-oatmeal/40' : ''}`}>
+              {cols.map(col => (
+                <td
+                  key={col.key}
+                  className={`py-2 px-3 ${col.numeric ? 'text-right tabular-nums font-bold' : 'font-medium max-w-[220px] truncate'} ${
+                    col.key === 'item_title' ? 'text-jet' : 'text-jet'
+                  } ${col.key === 'share_rate' && r.share_rate >= 0.15 ? 'text-[#1D6B5E]' : ''}`}
+                  title={col.key === 'item_title' ? r.item_title : undefined}
+                >
+                  {fmt(r, col.key)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function AnalyticsDashboard() {
   const [itemStats, setItemStats] = useState<ItemViewStat[]>([]);
@@ -475,8 +612,26 @@ export default function AnalyticsDashboard() {
     { label: 'Desktop', value: `${desktopPercent}%`, sub: `${totalDesktop} views`, icon: <Monitor size={15} strokeWidth={2.5} /> },
   ];
 
+  const overallShareRate = totalItemViews ? Math.round((totalShares.last12Days / totalItemViews) * 100) : 0;
+  const breakdownRows = buildBreakdownRows(itemStats, shareStats);
+
   return (
     <div className="space-y-8">
+
+      {/* ── 0. Toolbar ── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-stone">Reporting window</p>
+          <p className="font-bold text-jet">Last 12 days · {totalItemViews.toLocaleString()} item views · {overallShareRate}% share rate</p>
+        </div>
+        <button
+          onClick={() => exportBreakdownCsv(breakdownRows)}
+          disabled={breakdownRows.length === 0}
+          className="flex items-center gap-2 font-bold border-[2px] border-jet px-4 py-2.5 text-xs uppercase tracking-widest bg-surface hover:bg-jet hover:text-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-[3px_3px_0px_theme(colors.jet)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none"
+        >
+          <Download size={14} strokeWidth={2.5} /> Export CSV
+        </button>
+      </div>
 
       {/* ── 1. Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -530,6 +685,20 @@ export default function AnalyticsDashboard() {
           <BarChart2 size={48} className="mx-auto mb-4 text-stone" strokeWidth={1.5} />
           <p className="font-bold text-xl text-jet">No item views in the last 12 days.</p>
           <p className="text-stone mt-2 text-sm">Open some items on the storefront to start collecting data.</p>
+        </div>
+      )}
+
+      {/* ── 6. Full data breakdown table ── */}
+      {itemStats.length > 0 && (
+        <div className="bg-surface border-[3px] border-jet p-6 shadow-[4px_4px_0px_theme(colors.jet)]">
+          <div className="flex items-center justify-between gap-3 mb-6 border-b-[2px] border-jet pb-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Table2 size={18} strokeWidth={2.5} />
+              <span className="font-bold uppercase tracking-widest text-sm">Item Breakdown</span>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-stone">Tap a column to sort</span>
+          </div>
+          <ItemBreakdownTable stats={itemStats} shareStats={shareStats} />
         </div>
       )}
     </div>

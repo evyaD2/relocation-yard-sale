@@ -24,3 +24,8 @@ scripts/migration_secrets.json
 *.njsproj
 *.sln
 *.sw?
+
+# Local env (keep secrets out of git)
+.env
+.vercel
+.env*

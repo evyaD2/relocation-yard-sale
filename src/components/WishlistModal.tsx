@@ -5,6 +5,7 @@ import { useWishlist } from '../contexts/WishlistContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ShareMenu } from './ShareMenu';
 import { CONTACT_NUMBERS } from '../config/contacts';
+import { IMAGE_PLACEHOLDER, handleImageError } from '../utils/imageFallback';
 import type { YardSaleItem } from '../types';
 
 const WhatsAppIcon = () => (
@@ -116,8 +117,9 @@ export function WishlistModal({ items, onSelectItem, onClose }: WishlistModalPro
                 >
                   <div className="relative aspect-square overflow-hidden">
                     <img
-                      src={item.images[0]}
+                      src={item.images[0] || IMAGE_PLACEHOLDER}
                       alt={item.title}
+                      onError={handleImageError}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                     {/* Remove from wishlist */}
@@ -148,7 +150,10 @@ export function WishlistModal({ items, onSelectItem, onClose }: WishlistModalPro
 
         {/* Sticky WhatsApp CTA */}
         {likedItems.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-oatmeal via-oatmeal to-transparent pointer-events-none z-10">
+          <div
+            className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-oatmeal via-oatmeal to-transparent pointer-events-none z-10"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
             <div className="max-w-md mx-auto pointer-events-auto">
               <button
                 onClick={handleWhatsApp}

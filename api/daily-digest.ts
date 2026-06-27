@@ -15,11 +15,18 @@ import { supabase } from './lib/supabase.js';
  * Also manually triggerable with CRON_SECRET.
  */
 export default async function handler(req: any, res: any) {
-  // 1. Authorization Check
+  // 1. Authorization Check — fail closed.
+  // This endpoint sends Twilio WhatsApp messages and calls the AI provider, both
+  // of which cost money, so it must never be publicly triggerable. If CRON_SECRET
+  // is not configured we refuse rather than leave the endpoint open.
   const authHeader = req.headers['authorization'];
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.error('CRON_SECRET is not configured — refusing to run digest.');
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     console.error('Unauthorized cron trigger attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }

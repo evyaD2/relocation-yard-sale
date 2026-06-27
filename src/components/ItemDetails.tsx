@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { generateWhatsAppLink } from '../utils/whatsapp';
 import type { YardSaleItem } from '../types';
@@ -10,6 +10,7 @@ import { recordItemView, recordItemShare } from '../api/items';
 import type { ShareChannel } from '../api/items';
 import { useLanguage, CONDITION_LABELS } from '../contexts/LanguageContext';
 import { ShareMenu } from './ShareMenu';
+import { IMAGE_PLACEHOLDER, handleImageError } from '../utils/imageFallback';
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
@@ -19,6 +20,10 @@ const WhatsAppIcon = () => (
 
 interface ItemDetailsProps {
   item: YardSaleItem;
+  /** Ordered list the detail view can page through. */
+  items?: YardSaleItem[];
+  /** Navigate the detail view to another item without closing it. */
+  onNavigate?: (item: YardSaleItem) => void;
   onBack: () => void;
   isPopNavigation?: boolean;
   isVisible: boolean;
@@ -26,8 +31,22 @@ interface ItemDetailsProps {
 
 const scrollCache = new Map<string, number>();
 
-export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }: ItemDetailsProps) {
+export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigation = false, isVisible }: ItemDetailsProps) {
   const { t, lang } = useLanguage();
+
+  // Sibling items for in-place paging (prev/next without leaving the view).
+  const { prevItem, nextItem, position } = useMemo(() => {
+    const idx = items.findIndex(i => i.id === item.id);
+    if (idx === -1) return { prevItem: null, nextItem: null, position: null };
+    return {
+      prevItem: idx > 0 ? items[idx - 1] : null,
+      nextItem: idx < items.length - 1 ? items[idx + 1] : null,
+      position: { current: idx + 1, total: items.length },
+    };
+  }, [items, item.id]);
+
+  const goPrev = useCallback(() => { if (prevItem) onNavigate?.(prevItem); }, [prevItem, onNavigate]);
+  const goNext = useCallback(() => { if (nextItem) onNavigate?.(nextItem); }, [nextItem, onNavigate]);
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -83,11 +102,15 @@ export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isVisible) onBack();
+      if (!isVisible) return;
+      if (e.key === 'Escape') onBack();
+      // Page between items with arrow keys (left = prev, right = next).
+      else if (e.key === 'ArrowLeft') goPrev();
+      else if (e.key === 'ArrowRight') goNext();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onBack, isVisible]);
+  }, [onBack, isVisible, goPrev, goNext]);
 
   const scrollPrev = useCallback(() => { if (emblaApi) emblaApi.scrollPrev(); }, [emblaApi]);
   const scrollNext = useCallback(() => { if (emblaApi) emblaApi.scrollNext(); }, [emblaApi]);
@@ -156,6 +179,32 @@ export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }
           >
             <X size={20} strokeWidth={2.5} />
           </button>
+
+          {/* Page between items without leaving the view */}
+          {position && position.total > 1 && (
+            <div className="flex items-center gap-1.5 sm:gap-2" dir="ltr">
+              <button
+                onClick={goPrev}
+                disabled={!prevItem}
+                aria-label="Previous item"
+                className="p-2.5 bg-surface border border-border-subtle rounded-xl text-jet transition-colors outline-none shadow-sm enabled:hover:bg-oatmeal enabled:cursor-pointer disabled:opacity-35"
+              >
+                <ChevronLeft size={20} strokeWidth={2.5} />
+              </button>
+              <span className="text-stone text-xs sm:text-sm font-bold tabular-nums min-w-[3.5rem] text-center select-none">
+                {position.current} / {position.total}
+              </span>
+              <button
+                onClick={goNext}
+                disabled={!nextItem}
+                aria-label="Next item"
+                className="p-2.5 bg-surface border border-border-subtle rounded-xl text-jet transition-colors outline-none shadow-sm enabled:hover:bg-oatmeal enabled:cursor-pointer disabled:opacity-35"
+              >
+                <ChevronRight size={20} strokeWidth={2.5} />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleShare}
             className="p-2.5 bg-surface border border-border-subtle rounded-xl hover:bg-oatmeal text-jet transition-colors outline-none cursor-pointer shadow-sm"
@@ -175,7 +224,7 @@ export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }
             <div className="relative aspect-square sm:aspect-[4/3] md:aspect-[16/9] rounded-2xl overflow-hidden bg-surface border border-border-subtle shadow-sm">
               <div className="h-full w-full touch-pan-y" ref={emblaRef}>
                 <div className="flex h-full w-full">
-                  {item.images.map((img, idx) => (
+                  {(item.images.length > 0 ? item.images : [IMAGE_PLACEHOLDER]).map((img, idx) => (
                     <div
                       className="relative flex-[0_0_100%] h-full w-full min-w-0 flex items-center justify-center p-2 sm:p-6"
                       key={idx}
@@ -183,6 +232,7 @@ export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }
                       <img
                         src={img}
                         alt={`${item.title} - ${idx + 1}`}
+                        onError={handleImageError}
                         className="w-full h-full object-contain"
                       />
                     </div>
@@ -322,7 +372,10 @@ export function ItemDetails({ item, onBack, isPopNavigation = false, isVisible }
         </div>
 
         {/* Sticky CTA */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-oatmeal via-oatmeal to-transparent pointer-events-none z-10">
+        <div
+          className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-oatmeal via-oatmeal to-transparent pointer-events-none z-10"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           <div className="max-w-xl mx-auto w-full pointer-events-auto flex flex-col sm:flex-row justify-center gap-3">
             <a
               href={generateWhatsAppLink(item.title, item.price, item.contact)}
