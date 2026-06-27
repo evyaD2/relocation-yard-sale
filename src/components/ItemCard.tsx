@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Heart } from 'lucide-react';
 import type { YardSaleItem } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -15,6 +16,11 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
   const isSold = item.status === 'sold';
   const liked = isLiked(item.id);
 
+  // Advance past broken thumbnails to the next image; fall back to the
+  // placeholder only when none of the item's images load (or there are none).
+  const [imgIndex, setImgIndex] = useState(0);
+  const imgSrc = item.images[imgIndex] || IMAGE_PLACEHOLDER;
+
   return (
     <div
       onClick={() => onClick(item)}
@@ -25,9 +31,12 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
       {/* Image */}
       <div className="relative aspect-square overflow-hidden bg-oatmeal">
         <img
-          src={item.images[0] || IMAGE_PLACEHOLDER}
+          src={imgSrc}
           alt={item.title}
-          onError={handleImageError}
+          onError={(e) => {
+            if (imgIndex < item.images.length - 1) setImgIndex(i => i + 1);
+            else handleImageError(e);
+          }}
           className={`w-full h-full object-cover transition-transform duration-700 ease-out ${
             !isSold ? 'group-hover:scale-105' : 'grayscale'
           }`}

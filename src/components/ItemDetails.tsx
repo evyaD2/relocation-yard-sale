@@ -2,13 +2,14 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { generateWhatsAppLink } from '../utils/whatsapp';
 import type { YardSaleItem } from '../types';
-import { Share2, X, ChevronLeft, ChevronRight, Store } from 'lucide-react';
+import { Share2, X, ChevronLeft, ChevronRight, Store, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { track } from '@vercel/analytics';
 import { supabase } from '../lib/supabase';
 import { recordItemView, recordItemShare } from '../api/items';
 import type { ShareChannel } from '../api/items';
 import { useLanguage, CONDITION_LABELS } from '../contexts/LanguageContext';
+import { useWishlist } from '../contexts/WishlistContext';
 import { ShareMenu } from './ShareMenu';
 import { IMAGE_PLACEHOLDER, handleImageError } from '../utils/imageFallback';
 
@@ -47,10 +48,27 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
 
   const goPrev = useCallback(() => { if (prevItem) onNavigate?.(prevItem); }, [prevItem, onNavigate]);
   const goNext = useCallback(() => { if (nextItem) onNavigate?.(nextItem); }, [nextItem, onNavigate]);
+
+  const { isLiked, toggle: toggleWishlist } = useWishlist();
+  const liked = isLiked(item.id);
+
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Drop images that fail to load so we never show a broken slide; only fall
+  // back to the placeholder when the item has no loadable images at all.
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  useEffect(() => { setFailedImages(new Set()); }, [item.id]);
+  const handleImageFail = useCallback((src: string) => {
+    setFailedImages(prev => (prev.has(src) ? prev : new Set(prev).add(src)));
+  }, []);
+  const validImages = useMemo(
+    () => item.images.filter(img => img && !failedImages.has(img)),
+    [item.images, failedImages],
+  );
+  const displayImages = validImages.length > 0 ? validImages : [IMAGE_PLACEHOLDER];
 
   // Track active slide index for dot indicators
   useEffect(() => {
@@ -65,6 +83,12 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
     setSelectedIndex(0);
     emblaApi?.scrollTo(0, true);
   }, [item.id, emblaApi]);
+
+  // Re-init when the number of slides changes (e.g. a broken image was dropped)
+  useEffect(() => {
+    emblaApi?.reInit();
+    setSelectedIndex(emblaApi?.selectedScrollSnap() ?? 0);
+  }, [emblaApi, displayImages.length]);
 
   useEffect(() => {
     if (isVisible && scrollContainerRef.current) {
@@ -224,15 +248,15 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
             <div className="relative aspect-square sm:aspect-[4/3] md:aspect-[16/9] rounded-2xl overflow-hidden bg-surface border border-border-subtle shadow-sm">
               <div className="h-full w-full touch-pan-y" ref={emblaRef}>
                 <div className="flex h-full w-full">
-                  {(item.images.length > 0 ? item.images : [IMAGE_PLACEHOLDER]).map((img, idx) => (
+                  {displayImages.map((img, idx) => (
                     <div
                       className="relative flex-[0_0_100%] h-full w-full min-w-0 flex items-center justify-center p-2 sm:p-6"
-                      key={idx}
+                      key={img}
                     >
                       <img
                         src={img}
                         alt={`${item.title} - ${idx + 1}`}
-                        onError={handleImageError}
+                        onError={img === IMAGE_PLACEHOLDER ? handleImageError : () => handleImageFail(img)}
                         className="w-full h-full object-contain"
                       />
                     </div>
@@ -240,7 +264,23 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
                 </div>
               </div>
 
-              {item.images.length > 1 && (
+              {/* Wishlist heart — available items only */}
+              {!isSold && (
+                <button
+                  onClick={() => toggleWishlist(item.id)}
+                  className="absolute top-3 right-3 z-20 p-2 bg-white/85 backdrop-blur-sm rounded-full shadow-sm hover:bg-white transition-all active:scale-90 outline-none"
+                  aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'}
+                >
+                  <Heart
+                    size={18}
+                    fill={liked ? '#E11D48' : 'none'}
+                    stroke={liked ? '#E11D48' : '#6E6E73'}
+                    strokeWidth={2}
+                  />
+                </button>
+              )}
+
+              {displayImages.length > 1 && (
                 <>
                   <button
                     aria-label="Previous image"
@@ -259,7 +299,7 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
 
                   {/* Interactive dots */}
                   <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-1.5 z-10">
-                    {item.images.map((_, idx) => (
+                    {displayImages.map((_, idx) => (
                       <button
                         key={idx}
                         onClick={() => emblaApi?.scrollTo(idx)}
