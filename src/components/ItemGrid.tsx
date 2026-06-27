@@ -126,6 +126,25 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
         transition={{ duration: 0.6, delay: 0.8 }}
         className="sticky top-4 z-40 w-full ps-4 pe-20 sm:px-4 sm:max-w-fit mx-auto overflow-visible select-none font-sans"
       >
+        {/* Mobile-only hide-sold toggle — lifted out of the filter bar and
+            parked in the top corner so the category pills get the full width. */}
+        <div className="sm:hidden flex justify-start mb-2">
+          <button
+            onClick={() => setHideSold(v => !v)}
+            role="switch"
+            aria-checked={hideSold}
+            className={`inline-flex items-center gap-1.5 rounded-full shadow-lg backdrop-blur-md px-3.5 py-2 text-[11px] font-bold tracking-wide outline-none transition-all duration-200 ${
+              hideSold
+                ? 'bg-jet text-surface'
+                : 'bg-surface/95 text-stone border border-border-subtle'
+            }`}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            {t.hideSold}
+            <span className="font-semibold opacity-60 tabular-nums">{soldCount}</span>
+          </button>
+        </div>
+
         <div className="relative overflow-hidden rounded-2xl shadow-lg">
           {/* Admin swipe drawer revealed behind */}
           <motion.div
@@ -203,14 +222,15 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
               ))}
             </div>
 
-            <div className="w-px h-5 bg-border-subtle shrink-0" />
+            <div className="hidden sm:block w-px h-5 bg-border-subtle shrink-0" />
 
-            {/* Hide-sold toggle — sits inline with the filters, subtle */}
+            {/* Hide-sold toggle — inline on desktop; on mobile it moves to the
+                standalone toggle above so the bar stays compact. */}
             <button
               onClick={() => setHideSold(v => !v)}
               role="switch"
               aria-checked={hideSold}
-              className={`shrink-0 px-3 sm:px-3.5 py-2 sm:py-2.5 text-[10px] sm:text-xs font-medium tracking-wide rounded-full outline-none transition-all duration-200 whitespace-nowrap ${
+              className={`hidden sm:inline-flex items-center shrink-0 px-3 sm:px-3.5 py-2 sm:py-2.5 text-[10px] sm:text-xs font-medium tracking-wide rounded-full outline-none transition-all duration-200 whitespace-nowrap ${
                 hideSold
                   ? 'text-jet bg-oatmeal'
                   : 'text-stone/70 hover:text-jet hover:bg-oatmeal'
