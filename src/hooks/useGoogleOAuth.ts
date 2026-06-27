@@ -5,7 +5,10 @@ declare global {
 }
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
+  // Full Drive access is required so the picker can list *every* photo already
+  // in the shared folder (drive.file only exposes files this app created) and so
+  // selected photos can be renamed into an item's naming convention on import.
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/spreadsheets',
 ].join(' ');
 

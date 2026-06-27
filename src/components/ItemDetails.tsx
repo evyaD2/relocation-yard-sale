@@ -323,6 +323,9 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
               <div className="flex flex-col gap-1">
                 {item.originalPrice && item.originalPrice > item.price && (
                   <div className="flex items-center gap-2">
+                    <span className="text-stone/70 text-[10px] sm:text-xs font-bold uppercase tracking-widest">
+                      {t.originalPriceLabel}
+                    </span>
                     <p className="text-stone text-lg sm:text-2xl line-through">
                       ₪{item.originalPrice.toLocaleString()}
                     </p>

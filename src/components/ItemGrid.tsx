@@ -74,6 +74,13 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
     return counts;
   }, [items]);
 
+  // Total sold items — surfaced on the hide-sold toggle so shoppers know how
+  // many listings the filter affects.
+  const soldCount = useMemo(
+    () => items.filter(item => item.status === 'sold').length,
+    [items],
+  );
+
   const filteredItems = useMemo(() => {
     let result = activeCategory === 'All'
       ? items
@@ -211,6 +218,9 @@ export function ItemGrid({ items, onSelectItem }: ItemGridProps) {
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               {t.hideSold}
+              <span className="ms-1.5 font-semibold opacity-60 tabular-nums">
+                {soldCount}
+              </span>
             </button>
           </motion.div>
         </div>

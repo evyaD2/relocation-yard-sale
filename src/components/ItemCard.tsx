@@ -81,14 +81,19 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
             {[item.brand, item.model].filter(Boolean).join(' · ')}
           </p>
         )}
-        <div className="flex items-baseline gap-2 mt-1" dir="ltr">
+        <div className="flex items-end gap-2 mt-1" dir="ltr">
           <p className="font-black text-xl sm:text-2xl text-jet">
             ₪{item.price.toLocaleString()}
           </p>
           {item.originalPrice && item.originalPrice > item.price && (
-            <p className="text-stone text-sm line-through">
-              ₪{item.originalPrice.toLocaleString()}
-            </p>
+            <span className="flex flex-col leading-tight" title={t.originalPriceLabel}>
+              <span className="text-stone/60 text-[9px] font-semibold uppercase tracking-wide">
+                {t.originalPriceLabel}
+              </span>
+              <span className="text-stone text-sm line-through">
+                ₪{item.originalPrice.toLocaleString()}
+              </span>
+            </span>
           )}
         </div>
       </div>
