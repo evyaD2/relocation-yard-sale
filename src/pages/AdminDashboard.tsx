@@ -7,7 +7,7 @@ import type { ItemCategory } from '../api/categories';
 import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
-import { uploadToDrive, driveFilename, driveFilenameForExt, listDriveFiles, driveThumbUrl, driveFileIdFromUrl, setDriveCover, renameDriveFile, makeDrivePublic } from '../api/drive-admin';
+import { uploadToDrive, listDriveFiles, driveThumbUrl, driveFileIdFromUrl, syncItemDriveImages } from '../api/drive-admin';
 import type { DriveFile } from '../api/drive-admin';
 import {
   readAllRows, parseHeaders, findRow,
@@ -252,7 +252,6 @@ export default function AdminDashboard() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sheetsRows, setSheetsRows] = useState<string[][] | null>(null);
   const [newCatName, setNewCatName] = useState('');
-  const [settingCover, setSettingCover] = useState(false);
   const [showDrivePicker, setShowDrivePicker] = useState(false);
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [drivePickerLoading, setDrivePickerLoading] = useState(false);
@@ -417,35 +416,34 @@ export default function AdminDashboard() {
       // 1. Determine item ID
       const itemId = editingId ?? await getNextItemId(googleToken);
 
-      // 2. Upload new images to Drive with naming convention.
-      // Existing drive images count as the offset for the suffix index; newly
-      // uploaded files come next, then photos imported from the Drive picker.
-      const existingDriveCount = editingId
-        ? (formData.images?.filter(u => u.includes('drive.google.com')).length ?? 0)
-        : 0;
-      const newDriveUrls: string[] = [];
+      // 2. Reconcile the item's Drive photos to match the form, in order.
+      //    The desired set = the existing Drive photos still shown in the form
+      //    (kept order — index 0 is the cover), then any newly uploaded files,
+      //    then photos imported from the Drive picker. Uploads go up with a
+      //    temporary name; syncItemDriveImages renames every kept/new/imported
+      //    file into consecutive convention names and deletes the ones removed
+      //    from the form, so add / remove / reorder / set-cover all take effect.
+      const existingDriveIds = (formData.images ?? [])
+        .filter(u => u.includes('drive.google.com'))
+        .map(driveFileIdFromUrl)
+        .filter((id): id is string => !!id);
+
+      const uploadedIds: string[] = [];
       for (let i = 0; i < imageFiles.length; i++) {
-        const filename = driveFilename(itemId, existingDriveCount + i, imageFiles[i]);
-        const url = await uploadToDrive(googleToken, imageFiles[i], filename);
-        if (url) newDriveUrls.push(url);
+        const ext = imageFiles[i].name.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const id = await uploadToDrive(googleToken, imageFiles[i], `${itemId}-tmp-upload-${Date.now()}-${i}.${ext}`);
+        if (id) uploadedIds.push(id);
       }
 
-      // 2b. Import photos picked from the Drive folder by renaming them into the
-      //     item's naming convention so the storefront discovers them.
-      const importedDriveUrls: string[] = [];
-      for (let j = 0; j < driveImports.length; j++) {
-        const file = driveImports[j];
-        const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-        const filename = driveFilenameForExt(itemId, existingDriveCount + imageFiles.length + j, ext);
-        if (await renameDriveFile(googleToken, file.id, filename)) {
-          await makeDrivePublic(googleToken, file.id);
-          importedDriveUrls.push(driveThumbUrl(file.id, 2000));
-        }
-      }
+      const orderedDriveIds = [...existingDriveIds, ...uploadedIds, ...driveImports.map(f => f.id)];
 
-      if (imageFiles.length > 0 || driveImports.length > 0) {
-        invalidateDriveCache(); // public storefront picks up new/imported images on next load
+      let driveUrls: string[] = [];
+      if (orderedDriveIds.length > 0 || editingId) {
+        const synced = await syncItemDriveImages(googleToken, itemId, orderedDriveIds);
+        if (!synced) { alert('Could not update the photos in Drive. Check the console.'); return; }
+        driveUrls = synced;
       }
+      invalidateDriveCache(); // public storefront picks up the changes on next load
 
       // 3. Build sheet values — Drive images are discovered by naming convention,
       //    so the `images` column only stores external URLs added manually.
@@ -482,12 +480,9 @@ export default function AdminDashboard() {
 
       setSheetsRows(null);
 
-      // 5. Update local state
-      const allImages = [
-        ...(formData.images?.filter(u => !u.includes('drive.google.com')) ?? []),
-        ...newDriveUrls,
-        ...importedDriveUrls,
-      ];
+      // 5. Update local state — Drive photos first (cover leads), then external
+      //    URLs, matching the storefront's ordering.
+      const allImages = [...driveUrls, ...existingSheetImages];
 
       if (editingId) {
         setItems(prev => prev.map(i =>
@@ -504,7 +499,7 @@ export default function AdminDashboard() {
           condition: formData.condition ?? '',
           category: formData.category!,
           status: 'available',
-          images: [...newDriveUrls, ...importedDriveUrls],
+          images: allImages,
           dimensions: formData.dimensions,
           fbMarketplaceLink: formData.fbMarketplaceLink,
           contact: (formData.contact as ItemContact) ?? 'hadas',
@@ -691,32 +686,11 @@ export default function AdminDashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleMakeCoverExisting = async (idx: number) => {
-    if (!formData.images || idx === 0 || settingCover) return;
-    const url = formData.images[idx];
-    const fileId = url.includes('drive.google.com') ? driveFileIdFromUrl(url) : null;
-
-    // Drive-backed image on an existing item → persist the cover by swapping
-    // the filename suffixes in Drive (the storefront discovers images by name).
-    if (editingId && fileId) {
-      if (!googleToken) { alert('Connect Google first to change the cover image.'); return; }
-      setSettingCover(true);
-      try {
-        const ok = await setDriveCover(googleToken, editingId, fileId);
-        if (!ok) { alert('Could not update the cover image in Drive. Check the console.'); return; }
-        invalidateDriveCache(); // storefront picks up the new cover on next load
-        // Reflect the new cover in the inventory list immediately.
-        setItems(prev => prev.map(i =>
-          i.id === editingId
-            ? { ...i, images: [url, ...i.images.filter(u => u !== url)] }
-            : i,
-        ));
-      } finally {
-        setSettingCover(false);
-      }
-    }
-
-    // Update the form preview order (also covers items with only external URLs).
+  // Moves a photo to the front (cover). The change is staged in the form and
+  // committed to Drive on Save, where syncItemDriveImages renames the files into
+  // the new order so the storefront's cover (the bare `{id}` file) updates.
+  const handleMakeCoverExisting = (idx: number) => {
+    if (!formData.images || idx === 0) return;
     const imgs = [...formData.images];
     const [picked] = imgs.splice(idx, 1);
     setFormData(prev => ({ ...prev, images: [picked, ...imgs] }));
@@ -952,7 +926,7 @@ export default function AdminDashboard() {
                           <div className={`absolute top-0 left-0 text-white text-[9px] px-1 font-bold z-10 ${idx === 0 ? 'bg-[#16A34A]' : 'bg-jet'}`}>{idx === 0 ? '★ COVER' : idx + 1}</div>
                           <img src={url} className="w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-black/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex flex-col justify-center items-center gap-1 z-20">
-                            {idx !== 0 && <button type="button" disabled={settingCover} onClick={() => handleMakeCoverExisting(idx)} className="text-[9px] font-bold text-white bg-jet px-2 py-0.5 w-[80%] uppercase disabled:opacity-50">{settingCover ? '…' : 'Set Cover'}</button>}
+                            {idx !== 0 && <button type="button" onClick={() => handleMakeCoverExisting(idx)} className="text-[9px] font-bold text-white bg-jet px-2 py-0.5 w-[80%] uppercase">Set Cover</button>}
                             <button type="button" onClick={() => setFormData({ ...formData, images: formData.images?.filter((_, i) => i !== idx) })} className="text-[9px] font-bold text-white bg-red-600 px-2 py-0.5 w-[80%] uppercase">Remove</button>
                           </div>
                         </div>
@@ -985,9 +959,9 @@ export default function AdminDashboard() {
                     </p>
                   )}
 
-                  {editingId && (formData.images?.length ?? 0) > 1 && (
+                  {editingId && (formData.images?.length ?? 0) > 0 && (
                     <p className="text-[10px] text-stone leading-snug">
-                      ★ The green image is the cover (default thumbnail). Hover/tap any other photo and choose “Set Cover” to make it the default.
+                      ★ The green image is the cover (default thumbnail). Hover/tap any other photo to “Set Cover” or “Remove” it. Photo changes are saved to Drive when you press Save.
                     </p>
                   )}
                 </div>

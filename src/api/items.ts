@@ -11,8 +11,11 @@ import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
 
 const GDRIVE_FOLDER_ID = '1WgVqUGgGc2uPwJYPFE7_84JRoZLbxg8h';
 const GDRIVE_API_KEY = import.meta.env.VITE_GDRIVE_API_KEY as string | undefined;
-const ITEM_SUFFIXES = ['', '-b', '-c', '-d', '-e', '-f', '-g', '-h'];
-const ITEM_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+// Cover is the bare `{id}` file; extra photos use `-b`, `-c` … `-z`.
+const ITEM_SUFFIXES = ['', ...'bcdefghijklmnopqrstuvwxyz'.split('').map(c => `-${c}`)];
+// Drive transcodes every format to a JPEG thumbnail, so we accept any image
+// extension a photo might carry (phones often save .heic/.heif/.avif).
+const ITEM_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'avif'];
 
 type DriveFile = { id: string; name: string };
 // In-memory cache so we only call the Drive API once per page load
@@ -50,8 +53,10 @@ function resolveItemDriveImages(itemId: string, fileMap: Map<string, string>): s
       fileId = fileMap.get(`${itemId}${suffix}.${ext}`);
       if (fileId) break;
     }
+    // Don't stop at the first gap: an admin edit can leave the suffix sequence
+    // non-contiguous (e.g. `5`, `5-b`, `5-f`), and every existing photo should
+    // still show. Skip the missing suffix and keep scanning.
     if (fileId) images.push(driveUrl(fileId));
-    else break; // images must be consecutive — stop at first gap
   }
   return images;
 }
