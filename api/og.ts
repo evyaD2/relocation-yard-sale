@@ -20,7 +20,7 @@
  * the real page.
  */
 
-import { supabase } from './lib/supabase.js';
+import { getShareItem } from './lib/storefront.js';
 
 const SITE_NAME = 'Edry Yard Sale';
 const DEFAULT_TITLE = "The Edrys' Yard Sale 🏡";
@@ -46,41 +46,39 @@ export default async function handler(req: any, res: any) {
   const requestUrl = new URL(req.url || '/', base);
   const itemId = requestUrl.searchParams.get('item');
 
+  // Defaults — the main-page / family preview.
   let title = DEFAULT_TITLE;
   let description = DEFAULT_DESCRIPTION;
   let image = `${base}/family.jpg`;
   let canonical = `${base}/`;
-  // Known dimensions let crawlers render a large image card without re-fetching.
-  // The family photo is a fixed local asset; item photos vary, so we drop the
-  // hints for those rather than advertise wrong dimensions.
+  // Known dimensions help crawlers render a large image card. Only the local
+  // family photo has fixed dimensions; item photos vary, so we drop the hints.
   let imageWidth: number | null = 1462;
   let imageHeight: number | null = 1948;
 
   if (itemId) {
     try {
-      const { data } = await supabase
-        .from('yard_sale_items')
-        .select('title, price, images, description')
-        .eq('id', itemId)
-        .single();
-
-      if (data) {
-        title = `${data.title} — ₪${data.price}`;
-        description = data.description || description;
-        const firstImage = Array.isArray(data.images) ? data.images[0] : undefined;
-        if (firstImage) {
-          image = firstImage;
+      const item = await getShareItem(itemId);
+      if (item) {
+        title = `${item.title} — ₪${item.price}`;
+        description = item.description || `${item.title} — מכירת חצר של משפחת אדרי 🏡`;
+        canonical = `${base}/?item=${encodeURIComponent(itemId)}`;
+        if (item.imageUrl) {
+          image = item.imageUrl;
           imageWidth = null;
           imageHeight = null;
         }
-        canonical = `${base}/?item=${encodeURIComponent(itemId)}`;
       }
     } catch (err) {
-      // Fall back to the default (family) preview if the lookup fails — a broken
-      // preview is worse than a generic one.
-      console.error('OG item lookup failed:', err);
+      // A generic (family) preview is better than a broken one.
+      console.error('[og] item lookup failed:', err);
     }
   }
+
+  const dimensionTags =
+    imageWidth && imageHeight
+      ? `\n<meta property="og:image:width" content="${imageWidth}" />\n<meta property="og:image:height" content="${imageHeight}" />`
+      : '';
 
   const html = `<!doctype html>
 <html lang="he">
@@ -89,11 +87,7 @@ export default async function handler(req: any, res: any) {
 <title>${esc(title)}</title>
 <meta property="og:title" content="${esc(title)}" />
 <meta property="og:description" content="${esc(description)}" />
-<meta property="og:image" content="${esc(image)}" />${
-    imageWidth && imageHeight
-      ? `\n<meta property="og:image:width" content="${imageWidth}" />\n<meta property="og:image:height" content="${imageHeight}" />`
-      : ''
-  }
+<meta property="og:image" content="${esc(image)}" />${dimensionTags}
 <meta property="og:url" content="${esc(canonical)}" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="${esc(SITE_NAME)}" />
@@ -109,7 +103,7 @@ export default async function handler(req: any, res: any) {
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  // Let the CDN cache previews briefly so repeated crawls don't hammer the DB.
+  // Let the CDN cache previews briefly so repeated crawls don't hammer the sources.
   res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
   res.status(200).send(html);
 }
