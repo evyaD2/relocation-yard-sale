@@ -577,6 +577,61 @@ export async function fetchItemDailyStats(days = 12): Promise<ItemDailyStat[]> {
   return result;
 }
 
+// ── Raw rows (for client-side day/hour drill-down) ──────────────────────────
+
+export interface ItemViewRaw {
+  item_id: string;
+  item_title: string;
+  viewed_at: string; // ISO timestamp
+  platform: string;
+}
+
+/**
+ * Returns the raw item-view rows for the last N days (timestamps preserved).
+ * Aggregating client-side lets the dashboard switch between daily and hourly
+ * resolution without extra round-trips.
+ */
+export async function fetchItemViewsRaw(days = 12): Promise<ItemViewRaw[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days + 1);
+  since.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from('item_views')
+    .select('item_id, item_title, viewed_at, platform')
+    .gte('viewed_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch raw item views', error);
+    return [];
+  }
+  return data as ItemViewRaw[];
+}
+
+export interface ItemShareRaw {
+  item_id: string;
+  item_title: string;
+  shared_at: string; // ISO timestamp
+}
+
+/** Returns the raw item-share rows for the last N days (timestamps preserved). */
+export async function fetchItemSharesRaw(days = 12): Promise<ItemShareRaw[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days + 1);
+  since.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from('item_shares')
+    .select('item_id, item_title, shared_at')
+    .gte('shared_at', since.toISOString());
+
+  if (error) {
+    console.error('Analytics: failed to fetch raw item shares', error);
+    return [];
+  }
+  return data as ItemShareRaw[];
+}
+
 // ── Share Tracking ─────────────────────────────────────────────────────────
 
 export type ShareChannel = 'whatsapp' | 'facebook' | 'native' | 'clipboard';

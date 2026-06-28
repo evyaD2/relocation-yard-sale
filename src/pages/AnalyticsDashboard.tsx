@@ -4,16 +4,14 @@
  * @copyright © 2026 Dor Gidony. All rights reserved.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  fetchItemViewStats,
-  fetchDailyViewStats,
+  fetchItemViewsRaw,
+  fetchItemSharesRaw,
   fetchStorefrontStats,
-  fetchItemDailyStats,
-  fetchItemShareStats,
   fetchTotalShares,
 } from '../api/items';
-import type { ItemViewStat, DailyViewStat, StorefrontStats, ItemDailyStat, ItemShareStat } from '../api/items';
+import type { ItemViewStat, DailyViewStat, StorefrontStats, ItemShareStat, ItemViewRaw, ItemShareRaw } from '../api/items';
 import { BarChart2, Smartphone, Monitor, Tablet, TrendingUp, Eye, Store, Share2, Download, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -33,6 +31,107 @@ function fmtDate(yyyymmdd: string): string {
   return `${d}/${m}`;
 }
 
+/** Returns YYYY-MM-DD in the browser's local timezone (matches the API helper). */
+function localDateStr(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+// ── Client-side aggregation (so a single day can drill into hourly buckets) ────
+
+/** Aggregates raw view rows into per-item totals + platform breakdown. */
+function aggregateItemStats(rows: ItemViewRaw[]): ItemViewStat[] {
+  const map = new Map<string, ItemViewStat>();
+  for (const row of rows) {
+    if (!map.has(row.item_id)) {
+      map.set(row.item_id, {
+        item_id: row.item_id,
+        item_title: row.item_title,
+        total_views: 0,
+        mobile_views: 0,
+        tablet_views: 0,
+        desktop_views: 0,
+      });
+    }
+    const stat = map.get(row.item_id)!;
+    stat.total_views += 1;
+    if (row.platform === 'mobile') stat.mobile_views += 1;
+    else if (row.platform === 'tablet') stat.tablet_views += 1;
+    else stat.desktop_views += 1;
+  }
+  return Array.from(map.values()).sort((a, b) => b.total_views - a.total_views);
+}
+
+/** Aggregates raw share rows into per-item totals. */
+function aggregateShareStats(rows: ItemShareRaw[]): ItemShareStat[] {
+  const map = new Map<string, ItemShareStat>();
+  for (const row of rows) {
+    if (!map.has(row.item_id)) {
+      map.set(row.item_id, { item_id: row.item_id, item_title: row.item_title, total_shares: 0 });
+    }
+    map.get(row.item_id)!.total_shares += 1;
+  }
+  return Array.from(map.values()).sort((a, b) => b.total_shares - a.total_shares);
+}
+
+/** Daily totals across the last N days, zero-filled (dates in local time). */
+function aggregateDaily(rows: ItemViewRaw[], days: number): DailyViewStat[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const date = localDateStr(new Date(row.viewed_at));
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  const result: DailyViewStat[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = localDateStr(d);
+    result.push({ date: dateStr, views: counts.get(dateStr) ?? 0 });
+  }
+  return result;
+}
+
+/** A time bucket on the X-axis of the line chart (a day, or an hour within a day). */
+interface ChartBucket {
+  key: string;   // matrix key
+  label: string; // X-axis label
+}
+
+/** Builds the line-chart buckets + per-item view matrix for the current view. */
+function buildLineSeries(
+  rows: ItemViewRaw[],
+  dailyDates: string[],
+  selectedDay: string | null,
+): { buckets: ChartBucket[]; matrix: Record<string, Record<string, number>> } {
+  const matrix: Record<string, Record<string, number>> = {};
+
+  if (selectedDay) {
+    // Hourly resolution within the selected day: buckets 00:00 … 23:00
+    const buckets: ChartBucket[] = Array.from({ length: 24 }, (_, h) => ({
+      key: String(h),
+      label: `${String(h).padStart(2, '0')}:00`,
+    }));
+    for (const row of rows) {
+      const d = new Date(row.viewed_at);
+      if (localDateStr(d) !== selectedDay) continue;
+      const key = String(d.getHours());
+      (matrix[row.item_id] ??= {})[key] = (matrix[row.item_id]?.[key] ?? 0) + 1;
+    }
+    return { buckets, matrix };
+  }
+
+  // Daily resolution across the whole window
+  const buckets: ChartBucket[] = dailyDates.map(date => ({ key: date, label: fmtDate(date) }));
+  for (const row of rows) {
+    const key = localDateStr(new Date(row.viewed_at));
+    (matrix[row.item_id] ??= {})[key] = (matrix[row.item_id]?.[key] ?? 0) + 1;
+  }
+  return { buckets, matrix };
+}
+
 function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
     <div className="flex items-center gap-3 mb-6 border-b-[2px] border-jet pb-4">
@@ -42,41 +141,72 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
   );
 }
 
-// ── Daily bar chart ───────────────────────────────────────────────────────────
-function DailyBarChart({ stats }: { stats: DailyViewStat[] }) {
+// ── Daily bar chart (clickable: select a day to drill the charts below) ────────
+function DailyBarChart({
+  stats,
+  selectedDay,
+  onSelectDay,
+}: {
+  stats: DailyViewStat[];
+  selectedDay: string | null;
+  onSelectDay: (date: string | null) => void;
+}) {
   const maxVal = Math.max(...stats.map(d => d.views), 1);
   return (
     <div>
       <div className="flex items-stretch gap-1 h-28 w-full">
         {stats.map(({ date, views }) => {
           const heightPct = views === 0 ? 3 : Math.round((views / maxVal) * 100);
+          const isSelected = selectedDay === date;
+          const dimmed = selectedDay !== null && !isSelected;
           return (
-            <div
+            <button
               key={date}
-              className="flex-1 relative group flex flex-col justify-end"
-              title={`${fmtDate(date)}: ${views} view${views !== 1 ? 's' : ''}`}
+              type="button"
+              onClick={() => onSelectDay(isSelected ? null : date)}
+              className={`flex-1 relative group flex flex-col justify-end cursor-pointer transition-opacity ${
+                dimmed ? 'opacity-40 hover:opacity-70' : 'opacity-100'
+              }`}
+              title={`${fmtDate(date)}: ${views} view${views !== 1 ? 's' : ''} — click to focus this day`}
             >
               <span
-                className="absolute left-1/2 -translate-x-1/2 text-[10px] font-bold text-jet opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none"
+                className={`absolute left-1/2 -translate-x-1/2 text-[10px] font-bold text-jet whitespace-nowrap pointer-events-none transition-opacity ${
+                  isSelected ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
+                }`}
                 style={{ bottom: `calc(${heightPct}% + 4px)` }}
               >
                 {views > 0 ? views : ''}
               </span>
               <div
-                className="w-full bg-jet transition-all group-hover:bg-stone"
+                className={`w-full transition-all ${
+                  isSelected ? 'bg-[#B5451B]' : 'bg-jet group-hover:bg-stone'
+                }`}
                 style={{ height: `${heightPct}%`, minHeight: '3px' }}
               />
-            </div>
+            </button>
           );
         })}
       </div>
       <div className="flex justify-between mt-2">
-        {stats.map(({ date }) => (
-          <span key={date} className="flex-1 text-center text-[8px] sm:text-[10px] font-bold text-stone leading-none">
-            {fmtDate(date)}
-          </span>
-        ))}
+        {stats.map(({ date }) => {
+          const isSelected = selectedDay === date;
+          return (
+            <span
+              key={date}
+              className={`flex-1 text-center text-[8px] sm:text-[10px] font-bold leading-none ${
+                isSelected ? 'text-[#B5451B]' : 'text-stone'
+              }`}
+            >
+              {fmtDate(date)}
+            </span>
+          );
+        })}
       </div>
+      <p className="text-[9px] font-bold text-stone uppercase tracking-widest mt-3">
+        {selectedDay
+          ? <>Focused on {fmtDate(selectedDay)} · <button onClick={() => onSelectDay(null)} className="underline hover:text-jet transition-colors">Show all 12 days</button></>
+          : 'Click a day to focus the charts below on that day'}
+      </p>
     </div>
   );
 }
@@ -168,25 +298,18 @@ function BrutalistTooltip({
 }
 
 function ItemLineChart({
-  dates,
+  buckets,
+  matrix,
   itemStats,
-  rawRows,
   shareStats,
 }: {
-  dates: string[];
+  buckets: ChartBucket[];
+  matrix: Record<string, Record<string, number>>;
   itemStats: ItemViewStat[];
-  rawRows: ItemDailyStat[];
   shareStats: ItemShareStat[];
 }) {
   // Legend-click selection state: Set of selected item_ids (empty = all visible)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Build view matrix
-  const matrix: Record<string, Record<string, number>> = {};
-  for (const row of rawRows) {
-    if (!matrix[row.item_id]) matrix[row.item_id] = {};
-    matrix[row.item_id][row.date] = row.views;
-  }
 
   // Build share map (item_id → total_shares)
   const shareMap = new Map(shareStats.map(s => [s.item_id, s.total_shares]));
@@ -212,11 +335,11 @@ function ItemLineChart({
     });
   }
 
-  // Transform data into Recharts-friendly format: [{ date: "17/04", item_id_1: 3, item_id_2: 5, ... }]
-  const chartData = dates.map(date => {
-    const point: Record<string, string | number> = { date: fmtDate(date) };
+  // Transform data into Recharts-friendly format: [{ bucket: "17/04", item_id_1: 3, ... }]
+  const chartData = buckets.map(({ key, label }) => {
+    const point: Record<string, string | number> = { bucket: label };
     for (const item of activeItems) {
-      point[item.item_id] = matrix[item.item_id]?.[date] ?? 0;
+      point[item.item_id] = matrix[item.item_id]?.[key] ?? 0;
     }
     return point;
   });
@@ -235,10 +358,11 @@ function ItemLineChart({
             vertical={false}
           />
           <XAxis
-            dataKey="date"
+            dataKey="bucket"
             tick={{ fontSize: 10, fontWeight: 700, fill: '#555555' }}
             tickLine={false}
             axisLine={{ stroke: '#1a1a1a', strokeWidth: 2 }}
+            interval={buckets.length > 16 ? 1 : 0}
           />
           <YAxis
             allowDecimals={false}
@@ -556,33 +680,55 @@ function ItemBreakdownTable({ stats, shareStats }: { stats: ItemViewStat[]; shar
 }
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
+const WINDOW_DAYS = 12;
+
 export default function AnalyticsDashboard() {
-  const [itemStats, setItemStats] = useState<ItemViewStat[]>([]);
-  const [dailyStats, setDailyStats] = useState<DailyViewStat[]>([]);
+  const [rawViews, setRawViews] = useState<ItemViewRaw[]>([]);
+  const [rawShares, setRawShares] = useState<ItemShareRaw[]>([]);
   const [storefrontStats, setStorefrontStats] = useState<StorefrontStats>({ total: 0, last12Days: 0 });
-  const [itemDailyRows, setItemDailyRows] = useState<ItemDailyStat[]>([]);
-  const [shareStats, setShareStats] = useState<ItemShareStat[]>([]);
   const [totalShares, setTotalShares] = useState({ total: 0, last12Days: 0 });
   const [loading, setLoading] = useState(true);
 
+  // Day drill-down: when set, every chart below the daily bar chart focuses on
+  // this single day (YYYY-MM-DD) and the time-series chart switches to hours.
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
-      fetchItemViewStats(12),
-      fetchDailyViewStats(12),
+      fetchItemViewsRaw(WINDOW_DAYS),
+      fetchItemSharesRaw(WINDOW_DAYS),
       fetchStorefrontStats(),
-      fetchItemDailyStats(12),
-      fetchItemShareStats(12),
       fetchTotalShares(),
-    ]).then(([items, daily, storefront, itemDaily, shares, sharesTotal]) => {
-      setItemStats(items);
-      setDailyStats(daily);
+    ]).then(([views, shares, storefront, sharesTotal]) => {
+      setRawViews(views);
+      setRawShares(shares);
       setStorefrontStats(storefront);
-      setItemDailyRows(itemDaily);
-      setShareStats(shares);
       setTotalShares(sharesTotal);
       setLoading(false);
     });
   }, []);
+
+  // ── Full-window aggregates (summary cards + daily bar chart never filter) ──
+  const dailyStats = useMemo(() => aggregateDaily(rawViews, WINDOW_DAYS), [rawViews]);
+  const itemStatsAll = useMemo(() => aggregateItemStats(rawViews), [rawViews]);
+
+  // ── Day-filtered rows that feed every chart below the daily bar chart ──
+  const focusViews = useMemo(
+    () => (selectedDay ? rawViews.filter(r => localDateStr(new Date(r.viewed_at)) === selectedDay) : rawViews),
+    [rawViews, selectedDay],
+  );
+  const focusShares = useMemo(
+    () => (selectedDay ? rawShares.filter(r => localDateStr(new Date(r.shared_at)) === selectedDay) : rawShares),
+    [rawShares, selectedDay],
+  );
+  const itemStats = useMemo(() => aggregateItemStats(focusViews), [focusViews]);
+  const shareStats = useMemo(() => aggregateShareStats(focusShares), [focusShares]);
+
+  const dailyDates = useMemo(() => dailyStats.map(d => d.date), [dailyStats]);
+  const { buckets: lineBuckets, matrix: lineMatrix } = useMemo(
+    () => buildLineSeries(rawViews, dailyDates, selectedDay),
+    [rawViews, dailyDates, selectedDay],
+  );
 
   if (loading) {
     return (
@@ -592,15 +738,17 @@ export default function AnalyticsDashboard() {
     );
   }
 
-  const totalItemViews = itemStats.reduce((s, i) => s + i.total_views, 0);
-  const totalMobile = itemStats.reduce((s, i) => s + i.mobile_views, 0);
-  const totalTablet = itemStats.reduce((s, i) => s + i.tablet_views, 0);
-  const totalDesktop = itemStats.reduce((s, i) => s + i.desktop_views, 0);
+  // Summary cards always reflect the full 12-day window, independent of drill-down.
+  const totalItemViews = itemStatsAll.reduce((s, i) => s + i.total_views, 0);
+  const totalMobile = itemStatsAll.reduce((s, i) => s + i.mobile_views, 0);
+  const totalTablet = itemStatsAll.reduce((s, i) => s + i.tablet_views, 0);
+  const totalDesktop = itemStatsAll.reduce((s, i) => s + i.desktop_views, 0);
   const mobilePercent = totalItemViews ? Math.round((totalMobile / totalItemViews) * 100) : 0;
   const tabletPercent = totalItemViews ? Math.round((totalTablet / totalItemViews) * 100) : 0;
   const desktopPercent = totalItemViews ? Math.round((totalDesktop / totalItemViews) * 100) : 0;
 
-  const chartDates = [...new Set(itemDailyRows.map(r => r.date))].sort();
+  // Below-chart aggregates honour the selected day.
+  const focusViewsTotal = itemStats.reduce((s, i) => s + i.total_views, 0);
   const top3 = itemStats.slice(0, 3);
 
   const summaryCards = [
@@ -615,6 +763,9 @@ export default function AnalyticsDashboard() {
   const overallShareRate = totalItemViews ? Math.round((totalShares.last12Days / totalItemViews) * 100) : 0;
   const breakdownRows = buildBreakdownRows(itemStats, shareStats);
 
+  // Suffix appended to the headers of every drill-down-aware section.
+  const focusSuffix = selectedDay ? ` — ${fmtDate(selectedDay)}` : '';
+
   return (
     <div className="space-y-8">
 
@@ -622,7 +773,14 @@ export default function AnalyticsDashboard() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-stone">Reporting window</p>
-          <p className="font-bold text-jet">Last 12 days · {totalItemViews.toLocaleString()} item views · {overallShareRate}% share rate</p>
+          {selectedDay ? (
+            <p className="font-bold text-jet">
+              Focused on {fmtDate(selectedDay)} · {focusViewsTotal.toLocaleString()} item views ·{' '}
+              <button onClick={() => setSelectedDay(null)} className="underline hover:text-stone transition-colors">Back to 12 days</button>
+            </p>
+          ) : (
+            <p className="font-bold text-jet">Last 12 days · {totalItemViews.toLocaleString()} item views · {overallShareRate}% share rate</p>
+          )}
         </div>
         <button
           onClick={() => exportBreakdownCsv(breakdownRows)}
@@ -647,28 +805,31 @@ export default function AnalyticsDashboard() {
         ))}
       </div>
 
-      {/* ── 2. Daily Trend ── */}
+      {/* ── 2. Daily Trend (clickable) ── */}
       <div className="bg-surface border-[3px] border-jet p-6 shadow-[4px_4px_0px_theme(colors.jet)]">
         <SectionHeader icon={<TrendingUp size={18} strokeWidth={2.5} />} label="Item Views — Last 12 Days" />
-        <DailyBarChart stats={dailyStats} />
+        <DailyBarChart stats={dailyStats} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
       </div>
 
       {/* ── 3. Top 3 Podium ── */}
       {top3.length >= 1 && (
         <div className="bg-surface border-[3px] border-jet p-6 shadow-[4px_4px_0px_theme(colors.jet)]">
-          <SectionHeader icon={<span className="text-lg">🏆</span>} label="Top 3 Most Viewed" />
+          <SectionHeader icon={<span className="text-lg">🏆</span>} label={`Top 3 Most Viewed${focusSuffix}`} />
           <Podium top3={top3} />
         </div>
       )}
 
-      {/* ── 4. Interactive per-item line chart ── */}
-      {chartDates.length > 0 && (
+      {/* ── 4. Interactive per-item line chart (hourly when a day is selected) ── */}
+      {itemStats.length > 0 && (
         <div className="bg-surface border-[3px] border-jet p-6 shadow-[4px_4px_0px_theme(colors.jet)] overflow-visible">
-          <SectionHeader icon={<BarChart2 size={18} strokeWidth={2.5} />} label="Item Performance Over 12 Days" />
+          <SectionHeader
+            icon={<BarChart2 size={18} strokeWidth={2.5} />}
+            label={selectedDay ? `Item Performance by Hour${focusSuffix}` : 'Item Performance Over 12 Days'}
+          />
           <ItemLineChart
-            dates={chartDates}
+            buckets={lineBuckets}
+            matrix={lineMatrix}
             itemStats={itemStats}
-            rawRows={itemDailyRows}
             shareStats={shareStats}
           />
         </div>
@@ -677,14 +838,20 @@ export default function AnalyticsDashboard() {
       {/* ── 5. Histogram + 50th Percentile ── */}
       {itemStats.length > 0 ? (
         <div className="bg-surface border-[3px] border-jet p-6 shadow-[4px_4px_0px_theme(colors.jet)] overflow-visible">
-          <SectionHeader icon={<BarChart2 size={18} strokeWidth={2.5} />} label="Item View Ranking — Last 12 Days" />
+          <SectionHeader icon={<BarChart2 size={18} strokeWidth={2.5} />} label={selectedDay ? `Item View Ranking${focusSuffix}` : 'Item View Ranking — Last 12 Days'} />
           <ItemHistogram stats={itemStats} />
         </div>
       ) : (
         <div className="border-[3px] border-jet p-10 bg-surface text-center">
           <BarChart2 size={48} className="mx-auto mb-4 text-stone" strokeWidth={1.5} />
-          <p className="font-bold text-xl text-jet">No item views in the last 12 days.</p>
-          <p className="text-stone mt-2 text-sm">Open some items on the storefront to start collecting data.</p>
+          <p className="font-bold text-xl text-jet">
+            {selectedDay ? `No item views on ${fmtDate(selectedDay)}.` : 'No item views in the last 12 days.'}
+          </p>
+          <p className="text-stone mt-2 text-sm">
+            {selectedDay
+              ? <button onClick={() => setSelectedDay(null)} className="underline hover:text-jet transition-colors">Back to the full 12-day window</button>
+              : 'Open some items on the storefront to start collecting data.'}
+          </p>
         </div>
       )}
 
@@ -694,7 +861,7 @@ export default function AnalyticsDashboard() {
           <div className="flex items-center justify-between gap-3 mb-6 border-b-[2px] border-jet pb-4 flex-wrap">
             <div className="flex items-center gap-3">
               <Table2 size={18} strokeWidth={2.5} />
-              <span className="font-bold uppercase tracking-widest text-sm">Item Breakdown</span>
+              <span className="font-bold uppercase tracking-widest text-sm">Item Breakdown{focusSuffix}</span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-stone">Tap a column to sort</span>
           </div>

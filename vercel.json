@@ -7,6 +7,17 @@
   "rewrites": [
     {
       "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|slackbot|telegrambot|linkedinbot|discordbot|pinterest|redditbot|googlebot|bingbot|applebot|skypeuripreview|vkshare|w3c_validator).*"
+        }
+      ],
+      "destination": "/api/og"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],

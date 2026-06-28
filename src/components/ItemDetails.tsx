@@ -139,8 +139,16 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
   const scrollPrev = useCallback(() => { if (emblaApi) emblaApi.scrollPrev(); }, [emblaApi]);
   const scrollNext = useCallback(() => { if (emblaApi) emblaApi.scrollNext(); }, [emblaApi]);
 
+  // Per-item pre-written message so the shared link reads like a real recommendation
+  // rather than a bare URL. The matching preview image is handled server-side by
+  // /api/og (see vercel.json crawler rewrite).
+  const shareText =
+    lang === 'he'
+      ? `מצאתי משהו מהמם במכירת החצר של משפחת אדרי 🏡\n*${item.title}* — רק ₪${item.price}`
+      : `Found something great at the Edrys' Yard Sale 🏡\n*${item.title}* — only ₪${item.price}`;
+
   const handleShare = async () => {
-    const shareData = { title: item.title, url: window.location.href };
+    const shareData = { title: item.title, text: shareText, url: window.location.href };
     if (navigator.share) {
       try {
         await navigator.share(shareData);
@@ -460,6 +468,7 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
           <ShareMenu
             url={window.location.href}
             title={item.title}
+            text={shareText}
             onClose={() => setShowShareMenu(false)}
           />
         )}
