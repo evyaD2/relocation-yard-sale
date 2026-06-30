@@ -272,6 +272,16 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
                 </div>
               </div>
 
+              {/* Sold — large, unmistakable stamp across the image */}
+              {isSold && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                  <div className="absolute inset-0 bg-black/30" />
+                  <span className="relative px-8 py-3 bg-[#DC2626] text-white text-3xl sm:text-5xl font-black tracking-[0.15em] uppercase rounded-xl shadow-2xl ring-4 ring-white/85 -rotate-[12deg]">
+                    {t.sold}
+                  </span>
+                </div>
+              )}
+
               {/* Wishlist heart — available items only */}
               {!isSold && (
                 <button
@@ -347,9 +357,11 @@ export function ItemDetails({ item, items = [], onNavigate, onBack, isPopNavigat
                 </p>
               </div>
               <span
-                className={`px-3 py-1.5 text-[11px] font-bold tracking-widest uppercase rounded-full ${
-                  isSold ? 'bg-[#DC2626]/10 text-[#DC2626]' : 'bg-[#16A34A]/10 text-[#16A34A]'
-                }`}
+                className={
+                  isSold
+                    ? 'px-5 py-2.5 text-base sm:text-xl font-black tracking-widest uppercase rounded-xl bg-[#DC2626] text-white shadow-lg ring-2 ring-[#DC2626]/30'
+                    : 'px-3 py-1.5 text-[11px] font-bold tracking-widest uppercase rounded-full bg-[#16A34A]/10 text-[#16A34A]'
+                }
               >
                 {isSold ? t.sold : t.available}
               </span>

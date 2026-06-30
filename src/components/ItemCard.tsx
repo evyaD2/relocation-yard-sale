@@ -42,14 +42,22 @@ export function ItemCard({ item, onClick }: ItemCardProps) {
           }`}
           loading="lazy"
         />
-        {/* Status badge — direction-aware via start-3 */}
-        <div
-          className={`absolute top-3 start-3 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide uppercase rounded-full ${
-            isSold ? 'bg-[#DC2626] text-white' : 'bg-[#16A34A] text-white'
-          }`}
-        >
-          {isSold ? t.sold : t.available}
-        </div>
+        {/* Available badge — small, direction-aware via start-3 */}
+        {!isSold && (
+          <div className="absolute top-3 start-3 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold tracking-wide uppercase rounded-full bg-[#16A34A] text-white">
+            {t.available}
+          </div>
+        )}
+
+        {/* Sold — large, unmistakable stamp across the whole thumbnail */}
+        {isSold && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="absolute inset-0 bg-black/25" />
+            <span className="relative px-5 py-2 bg-[#DC2626] text-white text-xl sm:text-3xl font-black tracking-[0.15em] uppercase rounded-lg shadow-2xl ring-4 ring-white/85 -rotate-[12deg]">
+              {t.sold}
+            </span>
+          </div>
+        )}
 
         {/* Wishlist heart — direction-aware, opposite corner from status. Hidden for sold items. */}
         {!isSold && (
