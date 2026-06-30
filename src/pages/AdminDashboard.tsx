@@ -431,17 +431,16 @@ export default function AdminDashboard() {
       const uploadedIds: string[] = [];
       for (let i = 0; i < imageFiles.length; i++) {
         const ext = imageFiles[i].name.split('.').pop()?.toLowerCase() ?? 'jpg';
-        const id = await uploadToDrive(googleToken, imageFiles[i], `${itemId}-tmp-upload-${Date.now()}-${i}.${ext}`);
-        if (id) uploadedIds.push(id);
+        uploadedIds.push(
+          await uploadToDrive(googleToken, imageFiles[i], `${itemId}-tmp-upload-${Date.now()}-${i}.${ext}`),
+        );
       }
 
       const orderedDriveIds = [...existingDriveIds, ...uploadedIds, ...driveImports.map(f => f.id)];
 
       let driveUrls: string[] = [];
       if (orderedDriveIds.length > 0 || editingId) {
-        const synced = await syncItemDriveImages(googleToken, itemId, orderedDriveIds);
-        if (!synced) { alert('Could not update the photos in Drive. Check the console.'); return; }
-        driveUrls = synced;
+        driveUrls = await syncItemDriveImages(googleToken, itemId, orderedDriveIds);
       }
       invalidateDriveCache(); // public storefront picks up the changes on next load
 
@@ -517,7 +516,10 @@ export default function AdminDashboard() {
       setDriveImports([]);
     } catch (err) {
       console.error('Save failed:', err);
-      alert('An error occurred. Check the console for details.');
+      // Surface the real reason on-screen — admins use this on mobile, where
+      // there is no console to "check".
+      const detail = err instanceof Error ? err.message : String(err);
+      alert(`Could not save the item:\n\n${detail}`);
     } finally {
       setIsUploading(false);
     }

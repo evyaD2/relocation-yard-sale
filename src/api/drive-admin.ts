@@ -17,6 +17,66 @@ export function driveThumbUrl(fileId: string, size = 400) {
   return `https://drive.google.com/thumbnail?id=${fileId}&sz=s${size}`;
 }
 
+// Appended to every Drive call so operations also work if the shared folder ever
+// lives on a Shared Drive (harmless for ordinary My-Drive folders).
+const ALL_DRIVES = 'supportsAllDrives=true';
+
+/** Pulls the human-readable message out of a Drive API JSON error body. */
+function driveErrorMessage(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body);
+    const msg = parsed?.error?.message ?? parsed?.error_description;
+    if (msg) return msg;
+  } catch {
+    /* not JSON — fall through */
+  }
+  return body.slice(0, 300) || `HTTP ${status}`;
+}
+
+/** True for errors worth retrying: rate limits and transient server faults. */
+function isRetriable(status: number, body: string): boolean {
+  if (status === 429 || status >= 500) return true;
+  // Drive signals burst throttling as a 403 with a rate-limit reason.
+  return status === 403 && /rateLimitExceeded|userRateLimitExceeded|sharingRateLimitExceeded/i.test(body);
+}
+
+/**
+ * fetch() wrapper for the Drive API that retries transient failures with
+ * exponential backoff and, on a hard failure, throws an Error carrying the real
+ * status and Google's message (so it can be shown to the admin — there is no
+ * console on mobile). `okStatuses` lets callers treat e.g. 404 as success.
+ */
+async function driveFetch(
+  op: string,
+  url: string,
+  init: RequestInit,
+  okStatuses: number[] = [],
+): Promise<Response> {
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (networkErr) {
+      // Connection-level failure (common on flaky mobile networks) — retry.
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 400 * 2 ** (attempt - 1) + Math.random() * 200));
+        continue;
+      }
+      throw new Error(`${op} failed: network error (${(networkErr as Error).message})`);
+    }
+
+    if (res.ok || okStatuses.includes(res.status)) return res;
+
+    const body = await res.text().catch(() => '');
+    if (isRetriable(res.status, body) && attempt < MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, 400 * 2 ** (attempt - 1) + Math.random() * 200));
+      continue;
+    }
+    throw new Error(`${op} failed (${res.status}): ${driveErrorMessage(res.status, body)}`);
+  }
+}
+
 /** Lists all image files in the Drive folder using the admin OAuth token. */
 export async function listDriveFiles(token: string): Promise<DriveFile[]> {
   const q = encodeURIComponent(`'${GDRIVE_FOLDER_ID}' in parents and trashed=false and mimeType contains 'image/'`);
@@ -25,9 +85,8 @@ export async function listDriveFiles(token: string): Promise<DriveFile[]> {
   let pageToken = '';
 
   do {
-    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&orderBy=name&pageSize=200${pageToken ? `&pageToken=${pageToken}` : ''}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`Drive list failed: ${res.status}`);
+    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&orderBy=name&pageSize=200&${ALL_DRIVES}&includeItemsFromAllDrives=true${pageToken ? `&pageToken=${pageToken}` : ''}`;
+    const res = await driveFetch('Drive list', url, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json() as { files: DriveFile[]; nextPageToken?: string };
     all.push(...(data.files ?? []));
     pageToken = data.nextPageToken ?? '';
@@ -44,41 +103,49 @@ export function driveFileIdFromUrl(url: string): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
-/** Grants "anyone with the link" read access so the storefront can embed the image. */
+/**
+ * Grants "anyone with the link" read access so the storefront can embed the
+ * image. Best-effort: a file is usually already public (or shared via the
+ * folder), and a non-owner editor may not be allowed to change sharing — neither
+ * case should fail the whole save, so sharing errors are logged, not thrown.
+ */
 export async function makeDrivePublic(token: string, fileId: string): Promise<void> {
-  await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-  });
+  try {
+    await driveFetch(
+      'Drive share',
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?${ALL_DRIVES}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+      },
+    );
+  } catch (err) {
+    console.warn(`Could not make Drive file ${fileId} public (continuing):`, err);
+  }
 }
 
-/** Renames a Drive file. Returns true on success. */
-export async function renameDriveFile(token: string, fileId: string, name: string): Promise<boolean> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) {
-    console.error('Drive rename failed:', res.status, await res.text());
-    return false;
-  }
-  return true;
+/** Renames a Drive file. Throws with the real Drive error on failure. */
+export async function renameDriveFile(token: string, fileId: string, name: string): Promise<void> {
+  await driveFetch(
+    'Drive rename',
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id&${ALL_DRIVES}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    },
+  );
 }
 
-/** Permanently deletes a Drive file. Returns true on success. */
-export async function deleteDriveFile(token: string, fileId: string): Promise<boolean> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  // 404 means it's already gone — treat as success so a stale list doesn't block us.
-  if (!res.ok && res.status !== 404) {
-    console.error('Drive delete failed:', res.status, await res.text());
-    return false;
-  }
-  return true;
+/** Permanently deletes a Drive file. A 404 (already gone) is treated as success. */
+export async function deleteDriveFile(token: string, fileId: string): Promise<void> {
+  await driveFetch(
+    'Drive delete',
+    `https://www.googleapis.com/drive/v3/files/${fileId}?${ALL_DRIVES}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+    [404],
+  );
 }
 
 /**
@@ -92,13 +159,14 @@ export async function deleteDriveFile(token: string, fileId: string): Promise<bo
  *    leaving no gaps, and made publicly readable.
  *
  * Renames happen in two phases (temp names first) so filenames never collide
- * mid-swap. Returns the ordered public thumbnail URLs, or null on failure.
+ * mid-swap. Returns the ordered public thumbnail URLs. Throws (with the real
+ * Drive error) if any step fails.
  */
 export async function syncItemDriveImages(
   token: string,
   itemId: string | number,
   orderedFileIds: string[],
-): Promise<string[] | null> {
+): Promise<string[]> {
   const id = String(itemId);
   const baseOf = (name: string) => name.replace(EXT_RE, '');
   const extOf = (name: string) => (name.match(EXT_RE)?.[1] ?? 'jpg').toLowerCase();
@@ -106,7 +174,8 @@ export async function syncItemDriveImages(
   const files = await listDriveFiles(token);
   const byId = new Map(files.map(f => [f.id, f]));
 
-  // Files currently named into this item's convention.
+  // Files currently named into this item's convention. Anchor the prefix match
+  // to the suffix separator so item "3" never picks up item "30"'s photos.
   const itemFiles = files.filter(f => {
     const base = baseOf(f.name);
     return base === id || base.startsWith(`${id}-`);
@@ -130,17 +199,13 @@ export async function syncItemDriveImages(
 
   // 1. Delete the item's existing photos that are no longer wanted.
   for (const f of itemFiles) {
-    if (!wanted.has(f.id)) {
-      if (!await deleteDriveFile(token, f.id)) return null;
-    }
+    if (!wanted.has(f.id)) await deleteDriveFile(token, f.id);
   }
 
   // 2a. Move every target to a unique temporary name so the final renames in
   //     2b can't collide with a name still held by another target.
   for (let i = 0; i < targets.length; i++) {
-    if (!await renameDriveFile(token, targets[i].id, `${id}-tmp${i}.${extOf(targets[i].name)}`)) {
-      return null;
-    }
+    await renameDriveFile(token, targets[i].id, `${id}-tmp${i}.${extOf(targets[i].name)}`);
   }
 
   // 2b. Move to the final consecutive convention names and publish.
@@ -148,7 +213,7 @@ export async function syncItemDriveImages(
   for (let i = 0; i < targets.length; i++) {
     const f = targets[i];
     const finalName = `${id}${driveSuffix(i)}.${extOf(f.name)}`;
-    if (!await renameDriveFile(token, f.id, finalName)) return null;
+    await renameDriveFile(token, f.id, finalName);
     await makeDrivePublic(token, f.id); // so the storefront can embed the image
     urls.push(driveThumbUrl(f.id, 2000));
   }
@@ -159,25 +224,23 @@ export async function syncItemDriveImages(
  * Uploads a file to the shared Drive folder and returns its Drive file ID.
  * The caller renames it into the item's naming convention via
  * {@link syncItemDriveImages}, which also makes it publicly readable.
+ * Throws (with the real Drive error) on failure.
  */
 export async function uploadToDrive(
   token: string,
   file: File,
   filename: string,
-): Promise<string | null> {
+): Promise<string> {
   const metadata = { name: filename, parents: [GDRIVE_FOLDER_ID] };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', file);
 
-  const uploadRes = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+  const uploadRes = await driveFetch(
+    'Drive upload',
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&${ALL_DRIVES}`,
     { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
   );
-  if (!uploadRes.ok) {
-    console.error('Drive upload failed:', uploadRes.status, await uploadRes.text());
-    return null;
-  }
   const { id } = await uploadRes.json() as { id: string };
   return id;
 }
