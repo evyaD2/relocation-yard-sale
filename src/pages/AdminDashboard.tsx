@@ -13,7 +13,7 @@ import { uploadToDrive, listDriveFiles, driveThumbUrl, driveFileIdFromUrl, syncI
 import type { DriveFile } from '../api/drive-admin';
 import {
   readAllRows, parseHeaders, findRow,
-  getNextItemId, appendRow, updateRow,
+  getNextItemId, appendRow, updateRow, ensureColumns,
 } from '../api/sheets-admin';
 
 import {
@@ -59,6 +59,7 @@ function itemToSheetValues(item: Partial<YardSaleItem> & { id: string | number }
     brand: item.brand ?? '',
     model: item.model ?? '',
     hidden: item.hidden ? 'true' : '',
+    sold_at: item.sold_at ?? '',
   };
 }
 
@@ -119,7 +120,9 @@ function ItemRowInner({ item, handlers, reservation, dragHandle }: {
           {reservation && (
             <div dir="rtl" className="mt-1.5 text-[11px] text-stone leading-snug flex flex-wrap gap-x-3 gap-y-0.5">
               {reservation.buyer_name && <span className="font-bold text-jet">{reservation.buyer_name}</span>}
+              {reservation.sale_price != null && <span>סגירה: ₪{reservation.sale_price}</span>}
               {reservation.amount != null && <span>מקדמה: ₪{reservation.amount}</span>}
+              {(() => { const bal = reservationBalance(reservation); return bal != null ? <span className="font-bold text-[#B91C1C]">יתרה: ₪{bal}</span> : null; })()}
               {reservation.pickup_date && <span>איסוף: {formatDateShort(reservation.pickup_date)}</span>}
               {reservation.buyer_phone && <span className="font-mono" dir="ltr">{reservation.buyer_phone}</span>}
             </div>
@@ -130,7 +133,7 @@ function ItemRowInner({ item, handlers, reservation, dragHandle }: {
       <div className="flex flex-wrap gap-2 w-full sm:w-auto mt-3 sm:mt-0 sm:justify-end shrink-0">
         {reservation && reservation.buyer_phone && (
           <a
-            href={generateBuyerPickupLink(reservation.buyer_phone, item.title, reservation.buyer_name, reservation.pickup_date)}
+            href={generateBuyerPickupLink(reservation.buyer_phone, item.title, reservation.buyer_name, reservation.pickup_date, reservationBalance(reservation))}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 border-[2px] border-[#25D366] bg-[#25D366] text-white p-2 font-bold hover:opacity-90 transition-opacity px-3 uppercase tracking-wide text-xs"
@@ -272,6 +275,7 @@ const EMPTY_FORM: Partial<YardSaleItem> = {
 
 // Reservation form uses string fields so inputs stay controlled; converted on save.
 interface ReservationForm {
+  sale_price: string;
   amount: string;
   pickup_date: string;
   buyer_name: string;
@@ -281,8 +285,14 @@ interface ReservationForm {
 }
 
 const EMPTY_RESERVATION: ReservationForm = {
-  amount: '', pickup_date: '', buyer_name: '', buyer_phone: '', buyer_facebook: '', notes: '',
+  sale_price: '', amount: '', pickup_date: '', buyer_name: '', buyer_phone: '', buyer_facebook: '', notes: '',
 };
+
+/** Remaining balance = agreed sale price − prepayment received (never negative). */
+function reservationBalance(res: Pick<Reservation, 'sale_price' | 'amount'>): number | null {
+  if (res.sale_price == null) return null;
+  return Math.max(0, res.sale_price - (res.amount ?? 0));
+}
 
 export default function AdminDashboard() {
   const [session, setSession] = useState<any>(null);
@@ -520,7 +530,7 @@ export default function AdminDashboard() {
 
       // 4. Write to Sheets
       const allRows = await getSheetRows(true);
-      const { headers } = parseHeaders(allRows);
+      const headers = await ensureColumns(googleToken, allRows, ['sold_at']);
 
       let success: boolean;
       if (editingId) {
@@ -582,15 +592,23 @@ export default function AdminDashboard() {
   };
 
   const handleStatusChange = async (id: string, newStatus: ItemStatus) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, status: newStatus } : i));
+    // Stamp sold_at when an item first becomes sold; clear it when it leaves
+    // sold. Preserve an existing timestamp so re-saving a sold item keeps order.
+    const prevItem = items.find(i => i.id === id);
+    const nowSold = newStatus === 'sold';
+    const soldAt = nowSold
+      ? (prevItem?.status === 'sold' ? (prevItem.sold_at ?? new Date().toISOString()) : new Date().toISOString())
+      : '';
+
+    setItems(prev => prev.map(i => i.id === id ? { ...i, status: newStatus, sold_at: soldAt || undefined } : i));
     // Sync to Sheets
     if (googleToken) {
       try {
         const allRows = await getSheetRows();
-        const { headers } = parseHeaders(allRows);
+        const headers = await ensureColumns(googleToken, allRows, ['sold_at']);
         const rowIdx = findRow(allRows, id);
         if (rowIdx !== -1) {
-          await updateRow(googleToken, rowIdx, headers, allRows[rowIdx], { status: newStatus });
+          await updateRow(googleToken, rowIdx, headers, allRows[rowIdx], { status: newStatus, sold_at: soldAt });
           setSheetsRows(null);
         }
       } catch (err) { console.error('Status sync failed:', err); }
@@ -621,6 +639,7 @@ export default function AdminDashboard() {
     const existing = reservations.get(item.id);
     setResForm(existing
       ? {
+          sale_price: existing.sale_price != null ? String(existing.sale_price) : '',
           amount: existing.amount != null ? String(existing.amount) : '',
           pickup_date: existing.pickup_date ?? '',
           buyer_name: existing.buyer_name ?? '',
@@ -628,7 +647,8 @@ export default function AdminDashboard() {
           buyer_facebook: existing.buyer_facebook ?? '',
           notes: existing.notes ?? '',
         }
-      : { ...EMPTY_RESERVATION });
+      // New reservation: pre-fill the agreed price with the item's listed price.
+      : { ...EMPTY_RESERVATION, sale_price: item.price ? String(item.price) : '' });
     setReservingItem(item);
   };
 
@@ -642,6 +662,7 @@ export default function AdminDashboard() {
       const saved = await upsertReservation({
         item_id: reservingItem.id,
         item_title: reservingItem.title,
+        sale_price: resForm.sale_price.trim() === '' ? null : Number(resForm.sale_price),
         amount: resForm.amount.trim() === '' ? null : Number(resForm.amount),
         pickup_date: resForm.pickup_date || null,
         buyer_name: resForm.buyer_name,
@@ -726,19 +747,24 @@ export default function AdminDashboard() {
     if (!over || active.id === over.id) return;
 
     if (activeTab === 'inventory') {
-      const oldIndex = items.findIndex(i => i.id === active.id);
-      const newIndex = items.findIndex(i => i.id === over.id);
-      const ordered = arrayMove(items, oldIndex, newIndex).map((item, idx, arr) => ({
+      // Only the available (non-sold) items are draggable; sold items live in a
+      // separate, fixed section. Reorder within the available list only.
+      const active_ = items.filter(i => i.status !== 'sold');
+      const sold = items.filter(i => i.status === 'sold');
+      const oldIndex = active_.findIndex(i => i.id === active.id);
+      const newIndex = active_.findIndex(i => i.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = arrayMove(active_, oldIndex, newIndex).map((item, idx, arr) => ({
         ...item,
         display_order: arr.length - idx,
       }));
-      setItems(ordered);
+      setItems([...reordered, ...sold]);
 
       if (googleToken) {
         try {
           const allRows = await getSheetRows();
           const { headers } = parseHeaders(allRows);
-          for (const item of ordered) {
+          for (const item of reordered) {
             const rowIdx = findRow(allRows, item.id);
             if (rowIdx !== -1) {
               await updateRow(googleToken, rowIdx, headers, allRows[rowIdx], {
@@ -867,6 +893,14 @@ export default function AdminDashboard() {
     !q || i.title.toLowerCase().includes(q) || String(i.id).toLowerCase().includes(q) || (i.brand ?? '').toLowerCase().includes(q);
   const visibleItems = items.filter(i => matchesStatus(i) && matchesSearch(i));
   const isFiltering = statusFilter !== 'all' || q !== '';
+
+  // Default (unfiltered) inventory view splits into a draggable available list
+  // and a fixed, newest-first sold section.
+  const activeItems = items.filter(i => i.status !== 'sold');
+  const soldItems = items
+    .filter(i => i.status === 'sold')
+    .sort((a, b) => (b.sold_at ? Date.parse(b.sold_at) : 0) - (a.sold_at ? Date.parse(a.sold_at) : 0)
+      || (b.display_order ?? 0) - (a.display_order ?? 0));
 
   // Drive picker: hide files already queued for import, and (when editing) the
   // item's own convention images — re-importing those would leave a naming gap.
@@ -1195,15 +1229,45 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               ) : (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={visibleItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-4">
-                      {visibleItems.map(item => (
-                        <SortableItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
-                      ))}
+                <div className="space-y-10">
+                  {/* Available section — draggable to reorder */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-sm font-bold uppercase tracking-widest text-jet">For Sale</h2>
+                      <span className="text-[10px] font-bold bg-[#1D6B5E]/10 text-[#1D6B5E] border border-[#1D6B5E] px-2 py-0.5 tabular-nums">{activeItems.length}</span>
+                      <span className="text-[10px] text-stone">· drag to reorder</span>
                     </div>
-                  </SortableContext>
-                </DndContext>
+                    {activeItems.length === 0 ? (
+                      <div className="border-[2px] border-dashed border-stone/40 p-6 bg-surface text-center text-stone text-sm font-bold">All items are sold. 🎉</div>
+                    ) : (
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                        <SortableContext items={activeItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                          <div className="space-y-4">
+                            {activeItems.map(item => (
+                              <SortableItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    )}
+                  </div>
+
+                  {/* Sold section — fixed order, newest sold first */}
+                  {soldItems.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 border-t-[3px] border-jet pt-6">
+                        <h2 className="text-sm font-bold uppercase tracking-widest text-stone">Sold</h2>
+                        <span className="text-[10px] font-bold bg-stone/15 text-stone border border-stone px-2 py-0.5 tabular-nums">{soldItems.length}</span>
+                        <span className="text-[10px] text-stone">· newest first</span>
+                      </div>
+                      <div className="space-y-4 opacity-90">
+                        {soldItems.map(item => (
+                          <StaticItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )
             ) : (
               /* ── Categories tab ── */
@@ -1323,14 +1387,34 @@ export default function AdminDashboard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="block">
+                <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">מחיר סגירה מוסכם (₪)</span>
+                <input type="number" inputMode="numeric" min="0" value={resForm.sale_price} onChange={e => setResForm({ ...resForm, sale_price: e.target.value })} placeholder="לדוגמה: 400" className={`${INPUT_CLS} font-bold text-right`} />
+              </label>
+              <label className="block">
                 <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">מקדמה שהתקבלה (₪)</span>
                 <input type="number" inputMode="numeric" min="0" value={resForm.amount} onChange={e => setResForm({ ...resForm, amount: e.target.value })} placeholder="לדוגמה: 100" className={`${INPUT_CLS} font-bold text-right`} />
               </label>
-              <label className="block">
-                <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">תאריך איסוף</span>
-                <input type="date" value={resForm.pickup_date} onChange={e => setResForm({ ...resForm, pickup_date: e.target.value })} className={`${INPUT_CLS} text-right`} />
-              </label>
             </div>
+
+            {/* Live remaining balance */}
+            {(() => {
+              const balance = reservationBalance({
+                sale_price: resForm.sale_price.trim() === '' ? null : Number(resForm.sale_price),
+                amount: resForm.amount.trim() === '' ? null : Number(resForm.amount),
+              });
+              if (balance == null) return null;
+              return (
+                <div className="flex items-center justify-between border-[2px] border-jet bg-oatmeal px-4 py-3">
+                  <span className="text-[11px] font-bold tracking-widest text-stone">יתרה לתשלום באיסוף</span>
+                  <span className="text-xl font-bold text-jet">₪{balance}</span>
+                </div>
+              );
+            })()}
+
+            <label className="block">
+              <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">תאריך איסוף</span>
+              <input type="date" value={resForm.pickup_date} onChange={e => setResForm({ ...resForm, pickup_date: e.target.value })} className={`${INPUT_CLS} text-right`} />
+            </label>
 
             <label className="block">
               <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">טלפון (וואטסאפ)</span>

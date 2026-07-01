@@ -36,6 +36,7 @@ export async function upsertReservation(res: ReservationInput): Promise<Reservat
   const payload: ReservationInput = {
     item_id: String(res.item_id),
     item_title: res.item_title ?? null,
+    sale_price: res.sale_price ?? null,
     amount: res.amount ?? null,
     pickup_date: res.pickup_date || null,
     buyer_name: res.buyer_name?.trim() || null,

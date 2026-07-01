@@ -49,12 +49,14 @@ export function generateBuyerPickupLink(
   itemTitle: string,
   buyerName?: string | null,
   pickupDate?: string | null,
+  balanceDue?: number | null,
 ): string {
   const number = normalizeIsraeliPhone(buyerPhone);
   const greeting = buyerName?.trim() ? `היי ${buyerName.trim()}! 👋` : 'היי! 👋';
 
   let rawText = `${greeting}\n\nהמוצר *${itemTitle}* ששמרת מוכן לאיסוף 🎉`;
   if (pickupDate) rawText += `\n\nסיכמנו על איסוף בסביבות ${formatDateHe(pickupDate)}.`;
+  if (balanceDue != null && balanceDue > 0) rawText += `\n\nנותרה יתרה לתשלום באיסוף: ₪${balanceDue}.`;
   rawText += `\n\nמתי נוח לך להגיע לקחת אותו? אשמח לתאם 🙏`;
 
   return `https://wa.me/${number}?text=${encodeURIComponent(rawText)}`;

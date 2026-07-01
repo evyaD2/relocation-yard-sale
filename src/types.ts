@@ -25,6 +25,7 @@ export interface YardSaleItem {
   brand?: string;             // Manufacturer or store name (e.g. "IKEA", "Samsung")
   model?: string;             // Model name or number (e.g. "KALLAX", "Galaxy S21")
   hidden?: boolean;           // Admin-only: hides item from public storefront
+  sold_at?: string;           // ISO timestamp set when marked sold — sorts sold items newest-first
 }
 
 /**
@@ -39,6 +40,7 @@ export interface Reservation {
   id?: string;
   item_id: string;              // Sheet item id this reservation belongs to
   item_title?: string | null;   // Snapshot of the title, for readable admin lists
+  sale_price?: number | null;   // Agreed closing price, in ₪ (ILS)
   amount?: number | null;       // Prepayment received, in ₪ (ILS)
   pickup_date?: string | null;  // Agreed pickup date, YYYY-MM-DD
   buyer_name?: string | null;

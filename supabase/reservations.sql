@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS reservations (
   -- The Google Sheet item id (integer string like "12"). One reservation per item.
   item_id       text NOT NULL UNIQUE,
   item_title    text,
+  -- Agreed closing/sale price for this deal, in ₪ (ILS). May differ from listing.
+  sale_price    numeric,
   -- Prepayment actually received for the reservation, in ₪ (ILS).
   amount        numeric,
   -- Agreed pickup date (typically late July). Stored as a calendar date.
@@ -24,6 +26,9 @@ CREATE TABLE IF NOT EXISTS reservations (
   created_at    timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at    timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Safe for existing installs created before sale_price was introduced.
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS sale_price numeric;
 
 CREATE INDEX IF NOT EXISTS reservations_item_id_idx ON reservations(item_id);
 CREATE INDEX IF NOT EXISTS reservations_pickup_date_idx ON reservations(pickup_date);
