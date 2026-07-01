@@ -49,6 +49,39 @@ export async function getNextItemId(token: string): Promise<string> {
   return String(ids.length ? Math.max(...ids) + 1 : 1);
 }
 
+/**
+ * Ensures the given column names exist in the header row, appending any that are
+ * missing (e.g. `sold_at`, added after the sheet was first created). Returns the
+ * up-to-date header array. Mutates allRows[0] in place so callers reusing the
+ * cached rows see the new columns immediately.
+ */
+export async function ensureColumns(
+  token: string,
+  allRows: string[][],
+  required: string[],
+): Promise<string[]> {
+  const headers = allRows[0] ?? [];
+  const missing = required.filter(c => !headers.includes(c));
+  if (missing.length === 0) return headers;
+
+  const newHeaders = [...headers, ...missing];
+  const lastCol = colLetter(newHeaders.length - 1);
+  const range = `A1:${lastCol}1`;
+
+  const res = await fetch(
+    `${BASE}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: authHeaders(token),
+      body: JSON.stringify({ range, majorDimension: 'ROWS', values: [newHeaders] }),
+    },
+  );
+  if (!res.ok) throw new Error(`Sheets header update failed: ${res.status}`);
+
+  allRows[0] = newHeaders; // keep the cached copy in sync
+  return newHeaders;
+}
+
 // ── Write ─────────────────────────────────────────────────────────────────────
 
 /** Appends a new row at the bottom of the sheet. */

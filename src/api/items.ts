@@ -122,6 +122,7 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
   const model = (get('model') as string | null) || undefined;
   const rawHidden = (get('hidden') as string | null) ?? '';
   const hidden = rawHidden === 'true' || rawHidden === '1';
+  const sold_at = (get('sold_at') as string | null) || undefined;
 
   if (hidden) return null; // filtered out from public storefront
 
@@ -143,7 +144,24 @@ function rowToItem(row: any, cols: Array<{ label: string }>): YardSaleItem | nul
     brand,
     model,
     hidden: false, // already filtered above; admin panel sets this separately
+    sold_at,
   };
+}
+
+/**
+ * Storefront/admin ordering: available (non-sold) items first, kept in the
+ * admin's manual display_order; sold items sink below, most-recently-sold first.
+ */
+export function compareItemsForDisplay(a: YardSaleItem, b: YardSaleItem): number {
+  const aSold = a.status === 'sold';
+  const bSold = b.status === 'sold';
+  if (aSold !== bSold) return aSold ? 1 : -1; // available before sold
+  if (aSold && bSold) {
+    const at = a.sold_at ? Date.parse(a.sold_at) : 0;
+    const bt = b.sold_at ? Date.parse(b.sold_at) : 0;
+    if (bt !== at) return bt - at; // newest sold first
+  }
+  return (b.display_order ?? 0) - (a.display_order ?? 0);
 }
 
 export async function fetchItems(): Promise<YardSaleItem[]> {
@@ -178,8 +196,8 @@ export async function fetchItems(): Promise<YardSaleItem[]> {
         ...item,
         images: [...driveImageArrays[i], ...item.images],
       }))
-      // Preserve the same descending display_order sort as the original Supabase query
-      .sort((a, b) => (b.display_order ?? 0) - (a.display_order ?? 0));
+      // Available items first (by manual display_order), sold items last (newest sold first)
+      .sort(compareItemsForDisplay);
 
   } catch (err) {
     console.error('Error fetching items from Google Sheets:', err);
