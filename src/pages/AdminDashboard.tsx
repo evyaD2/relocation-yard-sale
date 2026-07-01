@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { fetchItems, updateItemStatus, updateItemContact, invalidateDriveCache } from '../api/items';
 import { fetchCategories, createCategory, updateCategoryName, deleteCategory, reorderCategories } from '../api/categories';
 import type { ItemCategory } from '../api/categories';
-import type { YardSaleItem, ItemStatus, ItemContact } from '../types';
+import { fetchReservations, upsertReservation, deleteReservation } from '../api/reservations';
+import { generateBuyerPickupLink } from '../utils/whatsapp';
+import type { YardSaleItem, ItemStatus, ItemContact, Reservation } from '../types';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import { useGoogleOAuth } from '../hooks/useGoogleOAuth';
 import { uploadToDrive, listDriveFiles, driveThumbUrl, driveFileIdFromUrl, syncItemDriveImages } from '../api/drive-admin';
@@ -74,12 +76,21 @@ interface RowHandlers {
   onHide: (item: YardSaleItem) => void;
   onStatusChange: (id: string, s: ItemStatus) => void;
   onContactChange: (id: string, c: ItemContact) => void;
+  onReserve: (item: YardSaleItem) => void;
+}
+
+/** DD/MM/YYYY from a YYYY-MM-DD string, for compact admin display. */
+function formatDateShort(date?: string | null): string {
+  if (!date) return '';
+  const [y, m, d] = date.split('-');
+  return d && m && y ? `${d}/${m}/${y}` : date;
 }
 
 /** Presentational row content, shared by the draggable and static variants. */
-function ItemRowInner({ item, handlers, dragHandle }: {
+function ItemRowInner({ item, handlers, reservation, dragHandle }: {
   item: YardSaleItem;
   handlers: RowHandlers;
+  reservation?: Reservation;
   dragHandle?: React.ReactNode;
 }) {
   const status = STATUS_META[item.status];
@@ -101,11 +112,35 @@ function ItemRowInner({ item, handlers, dragHandle }: {
             <span className={`text-[10px] font-bold px-2 py-0.5 border uppercase tracking-wider ${status.cls}`}>{status.label}</span>
             <span className="font-mono text-stone text-sm">₪{item.price}</span>
             <span className="font-mono text-stone/60 text-xs">#{item.id}</span>
+            {reservation && (
+              <span className="text-[10px] font-bold px-2 py-0.5 border uppercase tracking-wider bg-[#7C3AED]/10 text-[#7C3AED] border-[#7C3AED]">★ שמור</span>
+            )}
           </div>
+          {reservation && (
+            <div dir="rtl" className="mt-1.5 text-[11px] text-stone leading-snug flex flex-wrap gap-x-3 gap-y-0.5">
+              {reservation.buyer_name && <span className="font-bold text-jet">{reservation.buyer_name}</span>}
+              {reservation.amount != null && <span>מקדמה: ₪{reservation.amount}</span>}
+              {reservation.pickup_date && <span>איסוף: {formatDateShort(reservation.pickup_date)}</span>}
+              {reservation.buyer_phone && <span className="font-mono" dir="ltr">{reservation.buyer_phone}</span>}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2 w-full sm:w-auto mt-3 sm:mt-0 sm:justify-end shrink-0">
+        {reservation && reservation.buyer_phone && (
+          <a
+            href={generateBuyerPickupLink(reservation.buyer_phone, item.title, reservation.buyer_name, reservation.pickup_date)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 border-[2px] border-[#25D366] bg-[#25D366] text-white p-2 font-bold hover:opacity-90 transition-opacity px-3 uppercase tracking-wide text-xs"
+            title="שלח וואטסאפ לקונה — מוכן לאיסוף"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.892c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 005.71 1.447h.005c6.581 0 11.943-5.334 11.945-11.892a11.821 11.821 0 00-3.48-8.464"/></svg>
+            לאיסוף
+          </a>
+        )}
+        <button onClick={() => handlers.onReserve(item)} className="flex-1 sm:flex-none border-[2px] border-[#7C3AED] text-[#7C3AED] bg-transparent p-2 font-bold hover:bg-[#7C3AED] hover:text-white transition-colors px-4 uppercase tracking-wide text-xs" title={reservation ? 'ערוך שמירה' : 'שמור מוצר לקונה'}>{reservation ? '✎ שמירה' : '★ שמור'}</button>
         <button onClick={() => handlers.onEdit(item)} className="flex-1 sm:flex-none border-[2px] border-jet bg-jet text-surface p-2 font-bold hover:bg-stone transition-colors px-4 uppercase tracking-wide text-xs">Edit</button>
         <label className="flex-1 sm:flex-none flex flex-col gap-0.5">
           <span className="text-[8px] font-bold uppercase tracking-widest text-stone sm:hidden">Status</span>
@@ -129,7 +164,7 @@ function ItemRowInner({ item, handlers, dragHandle }: {
   );
 }
 
-function SortableItem({ item, ...handlers }: { item: YardSaleItem } & RowHandlers) {
+function SortableItem({ item, reservation, ...handlers }: { item: YardSaleItem; reservation?: Reservation } & RowHandlers) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -148,6 +183,7 @@ function SortableItem({ item, ...handlers }: { item: YardSaleItem } & RowHandler
       <ItemRowInner
         item={item}
         handlers={handlers}
+        reservation={reservation}
         dragHandle={
           <div
             {...attributes} {...listeners}
@@ -162,10 +198,10 @@ function SortableItem({ item, ...handlers }: { item: YardSaleItem } & RowHandler
   );
 }
 
-function StaticItem({ item, ...handlers }: { item: YardSaleItem } & RowHandlers) {
+function StaticItem({ item, reservation, ...handlers }: { item: YardSaleItem; reservation?: Reservation } & RowHandlers) {
   return (
     <div className={`bg-surface border-[3px] border-jet p-3 sm:p-5 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center shadow-[4px_4px_0px_theme(colors.jet)] ${item.hidden ? 'opacity-60' : ''}`}>
-      <ItemRowInner item={item} handlers={handlers} />
+      <ItemRowInner item={item} handlers={handlers} reservation={reservation} />
     </div>
   );
 }
@@ -234,12 +270,31 @@ const EMPTY_FORM: Partial<YardSaleItem> = {
   delivery_time: 'flexible', originalPrice: undefined, brand: '', model: '',
 };
 
+// Reservation form uses string fields so inputs stay controlled; converted on save.
+interface ReservationForm {
+  amount: string;
+  pickup_date: string;
+  buyer_name: string;
+  buyer_phone: string;
+  buyer_facebook: string;
+  notes: string;
+}
+
+const EMPTY_RESERVATION: ReservationForm = {
+  amount: '', pickup_date: '', buyer_name: '', buyer_phone: '', buyer_facebook: '', notes: '',
+};
+
 export default function AdminDashboard() {
   const [session, setSession] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [items, setItems] = useState<YardSaleItem[]>([]);
   const [categories, setCategories] = useState<ItemCategory[]>([]);
+  // Reservations keyed by Sheet item id (private buyer details live in Supabase).
+  const [reservations, setReservations] = useState<Map<string, Reservation>>(new Map());
+  const [reservingItem, setReservingItem] = useState<YardSaleItem | null>(null);
+  const [resForm, setResForm] = useState<ReservationForm>(EMPTY_RESERVATION);
+  const [savingReservation, setSavingReservation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'inventory' | 'analytics' | 'categories'>('inventory');
   const [search, setSearch] = useState('');
@@ -280,9 +335,10 @@ export default function AdminDashboard() {
 
   const loadItems = async () => {
     setLoading(true);
-    const [data, cats] = await Promise.all([fetchItems(), fetchCategories()]);
+    const [data, cats, resList] = await Promise.all([fetchItems(), fetchCategories(), fetchReservations()]);
     setItems(data);
     setCategories(cats);
+    setReservations(new Map(resList.map(r => [String(r.item_id), r])));
     setLoading(false);
   };
 
@@ -559,6 +615,76 @@ export default function AdminDashboard() {
     updateItemContact(id, newContact);
   };
 
+  // ── Reservations ─────────────────────────────────────────────────────────────
+
+  const openReserveModal = (item: YardSaleItem) => {
+    const existing = reservations.get(item.id);
+    setResForm(existing
+      ? {
+          amount: existing.amount != null ? String(existing.amount) : '',
+          pickup_date: existing.pickup_date ?? '',
+          buyer_name: existing.buyer_name ?? '',
+          buyer_phone: existing.buyer_phone ?? '',
+          buyer_facebook: existing.buyer_facebook ?? '',
+          notes: existing.notes ?? '',
+        }
+      : { ...EMPTY_RESERVATION });
+    setReservingItem(item);
+  };
+
+  const handleSaveReservation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reservingItem) return;
+    if (!resForm.buyer_name.trim()) { alert('אנא הזן את שם הקונה.'); return; }
+
+    setSavingReservation(true);
+    try {
+      const saved = await upsertReservation({
+        item_id: reservingItem.id,
+        item_title: reservingItem.title,
+        amount: resForm.amount.trim() === '' ? null : Number(resForm.amount),
+        pickup_date: resForm.pickup_date || null,
+        buyer_name: resForm.buyer_name,
+        buyer_phone: resForm.buyer_phone,
+        buyer_facebook: resForm.buyer_facebook,
+        notes: resForm.notes,
+      });
+      if (!saved) { alert('שמירת הפרטים נכשלה. בדוק את החיבור ונסה שוב.'); return; }
+
+      setReservations(prev => new Map(prev).set(reservingItem.id, saved));
+
+      // Reserving an item takes it off the market — mark it sold (Sheet + Supabase).
+      if (reservingItem.status !== 'sold') {
+        await handleStatusChange(reservingItem.id, 'sold');
+      }
+
+      setReservingItem(null);
+    } catch (err) {
+      console.error('Reservation save failed:', err);
+      alert(`שמירת הפרטים נכשלה:\n\n${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSavingReservation(false);
+    }
+  };
+
+  const handleCancelReservation = async () => {
+    if (!reservingItem) return;
+    if (!window.confirm(`לבטל את השמירה של "${reservingItem.title}"? פרטי הקונה יימחקו.`)) return;
+    setSavingReservation(true);
+    try {
+      const ok = await deleteReservation(reservingItem.id);
+      if (!ok) { alert('ביטול השמירה נכשל.'); return; }
+      setReservations(prev => {
+        const next = new Map(prev);
+        next.delete(reservingItem.id);
+        return next;
+      });
+      setReservingItem(null);
+    } finally {
+      setSavingReservation(false);
+    }
+  };
+
   const handleHideItem = async (item: YardSaleItem) => {
     if (!googleToken) { alert('Connect Google first to hide/show items in the spreadsheet.'); return; }
     const newHidden = !item.hidden;
@@ -767,6 +893,7 @@ export default function AdminDashboard() {
     onHide: handleHideItem,
     onStatusChange: handleStatusChange,
     onContactChange: handleContactChange,
+    onReserve: openReserveModal,
   };
 
   return (
@@ -1064,7 +1191,7 @@ export default function AdminDashboard() {
                     Showing {visibleItems.length} of {items.length} · reordering is disabled while filtering
                   </p>
                   {visibleItems.map(item => (
-                    <StaticItem key={item.id} item={item} {...rowHandlers} />
+                    <StaticItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
                   ))}
                 </div>
               ) : (
@@ -1072,7 +1199,7 @@ export default function AdminDashboard() {
                   <SortableContext items={visibleItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
                     <div className="space-y-4">
                       {visibleItems.map(item => (
-                        <SortableItem key={item.id} item={item} {...rowHandlers} />
+                        <SortableItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
                       ))}
                     </div>
                   </SortableContext>
@@ -1163,6 +1290,79 @@ export default function AdminDashboard() {
             </button>
           </div>
         </div>
+      </div>
+    )}
+
+    {/* ── Reservation Modal ── */}
+    {reservingItem && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-jet/70" onClick={e => { if (e.target === e.currentTarget && !savingReservation) setReservingItem(null); }}>
+        <form
+          dir="rtl"
+          onSubmit={handleSaveReservation}
+          className="bg-surface border-[3px] border-jet shadow-[8px_8px_0px_theme(colors.jet)] w-full max-w-lg max-h-[90vh] flex flex-col text-right"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b-[2px] border-jet px-6 py-4 shrink-0">
+            <div className="min-w-0">
+              <h3 className="font-bold text-xl tracking-wide">שמירת מוצר לקונה</h3>
+              <p className="text-xs text-stone mt-0.5 truncate">{reservingItem.title} · #{reservingItem.id}</p>
+            </div>
+            <button type="button" onClick={() => setReservingItem(null)} className="text-2xl font-bold hover:text-stone transition-colors leading-none shrink-0">✕</button>
+          </div>
+
+          {/* Body */}
+          <div className="overflow-y-auto flex-1 p-6 space-y-4">
+            <p className="text-[11px] text-stone leading-snug bg-oatmeal border-[2px] border-border-subtle p-2.5">
+              🔒 פרטי הקונה נשמרים באופן פרטי ומאובטח, ולעולם לא מוצגים בחנות הפומבית. שמירת מוצר תסמן אותו כ״נמכר״.
+            </p>
+
+            <label className="block">
+              <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 flex items-center gap-1">שם מלא של הקונה <span className="text-red-600">*</span></span>
+              <input type="text" required value={resForm.buyer_name} onChange={e => setResForm({ ...resForm, buyer_name: e.target.value })} placeholder="לדוגמה: יעל כהן" className={`${INPUT_CLS} font-bold text-right`} />
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block">
+                <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">מקדמה שהתקבלה (₪)</span>
+                <input type="number" inputMode="numeric" min="0" value={resForm.amount} onChange={e => setResForm({ ...resForm, amount: e.target.value })} placeholder="לדוגמה: 100" className={`${INPUT_CLS} font-bold text-right`} />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">תאריך איסוף</span>
+                <input type="date" value={resForm.pickup_date} onChange={e => setResForm({ ...resForm, pickup_date: e.target.value })} className={`${INPUT_CLS} text-right`} />
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">טלפון (וואטסאפ)</span>
+              <input type="tel" inputMode="tel" dir="ltr" value={resForm.buyer_phone} onChange={e => setResForm({ ...resForm, buyer_phone: e.target.value })} placeholder="050-000-0000" className={`${INPUT_CLS} font-mono text-left`} />
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">פרופיל פייסבוק (קישור או שם)</span>
+              <input type="text" dir="ltr" value={resForm.buyer_facebook} onChange={e => setResForm({ ...resForm, buyer_facebook: e.target.value })} placeholder="https://facebook.com/…" className={`${INPUT_CLS} text-left`} />
+            </label>
+
+            <label className="block">
+              <span className="text-[11px] font-bold tracking-widest text-stone mb-1.5 block">הערות</span>
+              <textarea rows={2} value={resForm.notes} onChange={e => setResForm({ ...resForm, notes: e.target.value })} placeholder="פרטים נוספים, סיכומים…" className={`${INPUT_CLS} resize-none text-right`} />
+            </label>
+
+            {resForm.buyer_facebook.trim() && /^https?:\/\//i.test(resForm.buyer_facebook.trim()) && (
+              <a href={resForm.buyer_facebook.trim()} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#1877F2] underline inline-block">פתח פרופיל פייסבוק ↗</a>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t-[2px] border-jet px-6 py-4 flex gap-3 shrink-0 flex-wrap">
+            <button type="submit" disabled={savingReservation} className={`flex-1 min-w-[140px] text-surface font-bold py-3 border-[2px] border-jet transition-colors tracking-widest text-sm ${savingReservation ? 'bg-stone cursor-not-allowed' : 'bg-[#7C3AED] hover:opacity-90'}`}>
+              {savingReservation ? 'שומר…' : reservations.has(reservingItem.id) ? '✓ עדכן שמירה' : '★ שמור וסמן כנמכר'}
+            </button>
+            {reservations.has(reservingItem.id) && (
+              <button type="button" onClick={handleCancelReservation} disabled={savingReservation} className="font-bold border-[2px] border-red-600 text-red-600 px-4 py-3 hover:bg-red-600 hover:text-white transition-colors tracking-wide text-sm">בטל שמירה</button>
+            )}
+            <button type="button" onClick={() => setReservingItem(null)} disabled={savingReservation} className="font-bold border-[2px] border-jet px-4 py-3 hover:bg-oatmeal transition-colors tracking-wide text-sm">סגור</button>
+          </div>
+        </form>
       </div>
     )}
     </>

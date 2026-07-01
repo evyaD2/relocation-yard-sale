@@ -26,3 +26,25 @@ export interface YardSaleItem {
   model?: string;             // Model name or number (e.g. "KALLAX", "Galaxy S21")
   hidden?: boolean;           // Admin-only: hides item from public storefront
 }
+
+/**
+ * A private reservation record for an item (admin-only).
+ *
+ * When a buyer wires a prepayment to hold an item for late-July pickup, the
+ * admin marks the item as sold and records these follow-up details. Buyer PII
+ * lives ONLY in the private Supabase `reservations` table — never in the public
+ * Google Sheet — keyed by the Sheet item id.
+ */
+export interface Reservation {
+  id?: string;
+  item_id: string;              // Sheet item id this reservation belongs to
+  item_title?: string | null;   // Snapshot of the title, for readable admin lists
+  amount?: number | null;       // Prepayment received, in ₪ (ILS)
+  pickup_date?: string | null;  // Agreed pickup date, YYYY-MM-DD
+  buyer_name?: string | null;
+  buyer_phone?: string | null;
+  buyer_facebook?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
