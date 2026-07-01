@@ -306,7 +306,7 @@ export default function AdminDashboard() {
   const [resForm, setResForm] = useState<ReservationForm>(EMPTY_RESERVATION);
   const [savingReservation, setSavingReservation] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'inventory' | 'analytics' | 'categories'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'sold' | 'analytics' | 'categories'>('inventory');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ItemStatus | 'hidden'>('all');
   const [showForm, setShowForm] = useState(false);
@@ -902,6 +902,20 @@ export default function AdminDashboard() {
     .sort((a, b) => (b.sold_at ? Date.parse(b.sold_at) : 0) - (a.sold_at ? Date.parse(a.sold_at) : 0)
       || (b.display_order ?? 0) - (a.display_order ?? 0));
 
+  // ── Sold & Reserved tab data ──
+  // Reserved items sorted by pickup date (soonest first, undated last).
+  const pickupTime = (i: YardSaleItem) => {
+    const d = reservations.get(i.id)?.pickup_date;
+    return d ? Date.parse(d) : Infinity;
+  };
+  const reservedItems = items
+    .filter(i => reservations.has(i.id))
+    .sort((a, b) => pickupTime(a) - pickupTime(b));
+  const soldOnlyItems = soldItems.filter(i => !reservations.has(i.id));
+  const allReservations = Array.from(reservations.values());
+  const totalPrepaid = allReservations.reduce((sum, r) => sum + (r.amount ?? 0), 0);
+  const totalBalanceDue = allReservations.reduce((sum, r) => sum + (reservationBalance(r) ?? 0), 0);
+
   // Drive picker: hide files already queued for import, and (when editing) the
   // item's own convention images — re-importing those would leave a naming gap.
   const belongsToEditingItem = (name: string) => {
@@ -973,7 +987,7 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-0 mb-8 w-full overflow-x-auto border-[2px] border-jet">
-          {(['inventory', 'categories', 'analytics'] as const).map(tab => (
+          {(['inventory', 'sold', 'categories', 'analytics'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab); setShowForm(false); }}
@@ -981,7 +995,10 @@ export default function AdminDashboard() {
                 activeTab === tab ? 'bg-jet text-surface' : 'bg-surface text-jet hover:bg-oatmeal'
               }`}
             >
-              {tab === 'inventory' ? '📦 Inventory' : tab === 'categories' ? '🗂 Categories' : '📊 Analytics'}
+              {tab === 'inventory' ? '📦 Inventory'
+                : tab === 'sold' ? `🧾 Sold & Reserved${reservations.size > 0 ? ` (${reservations.size})` : ''}`
+                : tab === 'categories' ? '🗂 Categories'
+                : '📊 Analytics'}
             </button>
           ))}
         </div>
@@ -989,8 +1006,68 @@ export default function AdminDashboard() {
         {/* Analytics tab */}
         {activeTab === 'analytics' && <AnalyticsDashboard />}
 
+        {/* Sold & Reserved tab */}
+        {activeTab === 'sold' && (
+          <div className="space-y-8">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Reserved', value: String(reservedItems.length), cls: 'text-[#7C3AED]' },
+                { label: 'Prepaid collected', value: `₪${totalPrepaid}`, cls: 'text-[#1D6B5E]' },
+                { label: 'Balance due', value: `₪${totalBalanceDue}`, cls: 'text-[#B91C1C]' },
+                { label: 'Sold (total)', value: String(soldItems.length), cls: 'text-stone' },
+              ].map(card => (
+                <div key={card.label} className="bg-surface border-[3px] border-jet p-4 shadow-[4px_4px_0px_theme(colors.jet)]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-stone">{card.label}</p>
+                  <p className={`text-2xl sm:text-3xl font-bold mt-1 tabular-nums ${card.cls}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="animate-pulse text-xl block border-[3px] border-jet p-6 bg-surface">Loading…</div>
+            ) : (
+              <>
+                {/* Reserved section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-sm font-bold uppercase tracking-widest text-[#7C3AED]">★ Reserved</h2>
+                    <span className="text-[10px] font-bold bg-[#7C3AED]/10 text-[#7C3AED] border border-[#7C3AED] px-2 py-0.5 tabular-nums">{reservedItems.length}</span>
+                    <span className="text-[10px] text-stone">· by pickup date, soonest first</span>
+                  </div>
+                  {reservedItems.length === 0 ? (
+                    <div className="border-[2px] border-dashed border-stone/40 p-6 bg-surface text-center text-stone text-sm font-bold">No reservations yet. Use “★ שמור” on any item to reserve it for a buyer.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {reservedItems.map(item => (
+                        <StaticItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sold without a reservation */}
+                {soldOnlyItems.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 border-t-[3px] border-jet pt-6">
+                      <h2 className="text-sm font-bold uppercase tracking-widest text-stone">Sold — no reservation</h2>
+                      <span className="text-[10px] font-bold bg-stone/15 text-stone border border-stone px-2 py-0.5 tabular-nums">{soldOnlyItems.length}</span>
+                      <span className="text-[10px] text-stone">· newest first · add details with “★ שמור”</span>
+                    </div>
+                    <div className="space-y-4 opacity-90">
+                      {soldOnlyItems.map(item => (
+                        <StaticItem key={item.id} item={item} reservation={reservations.get(item.id)} {...rowHandlers} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Inventory + Categories tabs */}
-        {activeTab !== 'analytics' && (
+        {(activeTab === 'inventory' || activeTab === 'categories') && (
           <>
             {activeTab === 'inventory' && !showForm && (
               <div className="mb-8 space-y-4">
